@@ -1,10 +1,13 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+from backend.db import init_db
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
     CORS(app, resources={r"/api/*": {"origins": "*"}})
+    init_db()
 
     @app.get("/api/health")
     def health():
