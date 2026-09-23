@@ -48,3 +48,8 @@ body {
   border: 1px solid #d9e2ec;
   border-radius: 8px;
 }
+
+.county-tooltip {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
