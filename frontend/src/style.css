@@ -1,0 +1,50 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  color: #1f2933;
+  background: #f5f7fa;
+}
+
+.app-header {
+  padding: 12px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9e2ec;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-header p {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: #52606d;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 16px;
+}
+
+#map {
+  flex: 1;
+  min-height: 480px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+}
