@@ -2,16 +2,19 @@ import L from "leaflet";
 import type { FeatureCollection, MultiPolygon, Polygon, Position } from "geojson";
 import countiesGeoJson from "./data/taiwan-counties.geojson?raw";
 
-/** A real observation: station position + valid temperature. */
-export interface TemperatureSample {
+/** A real observation: station position + a valid measured value. */
+export interface HeatmapSample {
   lat: number;
   lng: number;
-  temperature: number;
+  value: number;
 }
 
 export type RgbColor = readonly [number, number, number];
+/** Color for an interpolated value; null leaves that cell transparent. */
+export type ColorScale = (value: number) => RgbColor | null;
 
-const SURFACE_PANE = "temperature-surface";
+// Shared by every weather surface; main layers are exclusive, so one shows at a time.
+const SURFACE_PANE = "weather-surface";
 
 // Raster extent: main island, 澎湖, 金門, 馬祖, 綠島, 蘭嶼. The remote 東沙/南沙
 // polygons of 高雄市 lie outside it and are simply not painted.
@@ -95,7 +98,7 @@ function landMask(grid: Grid): Uint8ClampedArray {
 const KM_PER_DEG_LAT = 110.57;
 const KM_PER_DEG_LNG = 111.32 * Math.cos((23.7 * Math.PI) / 180);
 
-function interpolate(grid: Grid, mask: Uint8ClampedArray, samples: TemperatureSample[], colorAt: (t: number) => RgbColor): ImageData {
+function interpolate(grid: Grid, mask: Uint8ClampedArray, samples: HeatmapSample[], colorAt: ColorScale): ImageData {
   const n = samples.length;
   const sx = new Float64Array(n);
   const sy = new Float64Array(n);
@@ -103,7 +106,7 @@ function interpolate(grid: Grid, mask: Uint8ClampedArray, samples: TemperatureSa
   samples.forEach((s, i) => {
     sx[i] = s.lng * KM_PER_DEG_LNG;
     sy[i] = s.lat * KM_PER_DEG_LAT;
-    st[i] = s.temperature;
+    st[i] = s.value;
   });
 
   const image = new ImageData(grid.cols, grid.rows);
@@ -133,7 +136,9 @@ function interpolate(grid: Grid, mask: Uint8ClampedArray, samples: TemperatureSa
         tSum += w * st[i];
       }
       const t = Number.isFinite(exact) ? exact : tSum / wSum;
-      const [r, g, b] = colorAt(t);
+      const color = colorAt(t);
+      if (!color) continue;
+      const [r, g, b] = color;
       px[idx] = r;
       px[idx + 1] = g;
       px[idx + 2] = b;
@@ -143,19 +148,19 @@ function interpolate(grid: Grid, mask: Uint8ClampedArray, samples: TemperatureSa
   return image;
 }
 
-export interface TemperatureHeatmap {
+export interface HeatmapSurface {
   layer: L.ImageOverlay;
   /** Rebuild the surface from the current valid observations (local only, no requests). */
-  update(samples: TemperatureSample[]): void;
+  update(samples: HeatmapSample[]): void;
 }
 
 /**
- * Continuous temperature surface: IDW of real station temperatures on a fixed
- * ~1 km Web Mercator grid, clipped to the county GeoJSON. Rendered once per
- * data update into one image overlay that Leaflet scales on zoom/pan, so map
- * movement never recomputes or adds layers.
+ * Continuous weather surface: IDW of real station values on a fixed ~1 km Web
+ * Mercator grid, clipped to the county GeoJSON. Rendered once per data update
+ * into one image overlay that Leaflet scales on zoom/pan, so map movement
+ * never recomputes or adds layers. `className` tags the overlay image.
  */
-export function createTemperatureHeatmap(map: L.Map, colorAt: (t: number) => RgbColor): TemperatureHeatmap {
+export function createHeatmapSurface(map: L.Map, colorAt: ColorScale, className: string): HeatmapSurface {
   if (!map.getPane(SURFACE_PANE)) {
     // Above base tiles (200), below county lines (overlayPane 400) and markers.
     map.createPane(SURFACE_PANE).style.zIndex = "350";
@@ -166,13 +171,13 @@ export function createTemperatureHeatmap(map: L.Map, colorAt: (t: number) => Rgb
     pane: SURFACE_PANE,
     opacity: OPACITY,
     interactive: false,
-    className: "temperature-surface",
+    className,
   });
   let mask: Uint8ClampedArray | null = null;
   let objectUrl: string | null = null;
   let version = 0;
 
-  const update = (samples: TemperatureSample[]): void => {
+  const update = (samples: HeatmapSample[]): void => {
     if (samples.length === 0) {
       version++; // drop any render still encoding
       layer.setUrl(transparentPixel);

@@ -32,7 +32,9 @@ export function formatValue(value: number | null, unit: string, separator = " ")
   return value === null || !Number.isFinite(value) ? MISSING : `${value}${separator}${unit}`;
 }
 
-export function hasValidCoordinates(s: StationObservation): s is StationObservation & { latitude: number; longitude: number } {
+export function hasValidCoordinates<T extends { latitude: number | null; longitude: number | null }>(
+  s: T,
+): s is T & { latitude: number; longitude: number } {
   return (
     s.latitude !== null && s.longitude !== null &&
     Number.isFinite(s.latitude) && Number.isFinite(s.longitude) &&

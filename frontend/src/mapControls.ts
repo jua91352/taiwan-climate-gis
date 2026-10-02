@@ -40,6 +40,8 @@ export function layerToggle(map: L.Map, layer: L.Layer): Toggle {
 }
 
 export interface ControlItem {
+  /** Main layers: id reported to onMainLayerChange. */
+  id?: string;
   label: string;
   icon: IconName;
   /** Omitted → shown as 即將提供: visible, focusable, but does nothing. */
@@ -61,6 +63,8 @@ export interface MapControlsOptions {
   /** Display options, shown as switches. */
   options: ControlItem[];
   baseMaps: BaseMapOption[];
+  /** Called with the id of the main layer now on (null = none), initially and after each switch. */
+  onMainLayerChange?: (id: string | null) => void;
   /** 定位我的位置 handler; omitted → shown as 即將提供. Resolves when finished. */
   locate?: () => Promise<void>;
   /** Start collapsed (used on narrow screens). */
@@ -120,6 +124,10 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
   const clearMainLayers = (): void => {
     for (const t of mainToggles) if (t.isOn()) t.set(false);
   };
+  const notifyMainLayer = (): void => {
+    const active = opts.layers.find((item) => item.toggle?.isOn());
+    opts.onMainLayerChange?.(active?.id ?? null);
+  };
   const layerGrid = el("div", "mc-layer-grid");
   layerGrid.setAttribute("role", "group");
   layerGrid.setAttribute("aria-labelledby", "mc-title-layers");
@@ -141,6 +149,7 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
         clearMainLayers();
         if (!wasOn) toggle.set(true);
         refreshAll();
+        notifyMainLayer();
       });
       refreshers.push(() => btn.setAttribute("aria-pressed", String(toggle.isOn())));
     }
@@ -244,5 +253,6 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
   panel.append(head, body);
 
   refreshAll();
+  notifyMainLayer();
   return { element: panel, setCollapsed };
 }

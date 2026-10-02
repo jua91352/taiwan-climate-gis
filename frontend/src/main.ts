@@ -9,6 +9,8 @@ import { createHistoryChart } from "./historyChart";
 import { createTemperatureLayer } from "./temperatureLayer";
 import { createMapControls, layerToggle, type Toggle } from "./mapControls";
 import { createLocator } from "./geolocation";
+import { createRainfallLayer } from "./rainfallHeatmap";
+import { createSourceStatus, type MainLayerId } from "./dataSource";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -57,9 +59,15 @@ counties.layer.addTo(map);
 // Station markers are off by default; 測站點位 is one of the exclusive main layers.
 const stationLayer = createStationLayer(map);
 
+// Header "資料來源" line follows whichever main layer is on (see dataSource.ts).
+const sourceStatus = createSourceStatus(document.getElementById("data-status"));
+
 // Weather layer, on by default; uses the same /api/weather/latest data.
 const temperature = createTemperatureLayer(map);
 temperature.layer.addTo(map);
+
+// 雨量: past-1-hour rainfall surface from /api/rainfall/latest, off by default.
+const rainfall = createRainfallLayer(map, (detail) => sourceStatus.setDetail("rainfall", detail));
 
 // 氣溫數字標籤: show/hide the numbers drawn by the temperature layer (CSS only).
 const temperatureLabels: Toggle = {
@@ -73,17 +81,19 @@ const locateMe = createLocator(map, container.parentElement ?? document.body);
 
 // Right-side panel. The 8 main weather layers are mutually exclusive (at most one
 // on); items without a toggle are shown as 即將提供 (later batches).
+const mainLayer = (id: MainLayerId) => id;
 const mapControls = createMapControls(map, {
   layers: [
-    { label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
-    { label: "雨量", icon: "rain" },
-    { label: "雷達", icon: "radar" },
-    { label: "颱風", icon: "typhoon" },
-    { label: "風速風向", icon: "wind" },
-    { label: "濕度", icon: "humidity" },
-    { label: "天氣", icon: "weather" },
-    { label: "測站點位", icon: "station", toggle: layerToggle(map, stationLayer) },
+    { id: mainLayer("temperature"), label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
+    { id: mainLayer("rainfall"), label: "雨量", icon: "rain", toggle: layerToggle(map, rainfall.layer) },
+    { id: mainLayer("radar"), label: "雷達", icon: "radar" },
+    { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon" },
+    { id: mainLayer("wind"), label: "風速風向", icon: "wind" },
+    { id: mainLayer("humidity"), label: "濕度", icon: "humidity" },
+    { id: mainLayer("weather"), label: "天氣", icon: "weather" },
+    { id: mainLayer("stations"), label: "測站點位", icon: "station", toggle: layerToggle(map, stationLayer) },
   ],
+  onMainLayerChange: (id) => sourceStatus.setActive(id),
   options: [
     { label: "縣市界線", icon: "boundary", toggle: layerToggle(map, counties.layer) },
     // Only meaningful with the 氣溫 layer on; the preference survives layer switches.
@@ -97,10 +107,11 @@ const mapControls = createMapControls(map, {
 });
 container.after(mapControls.element);
 
+// 氣溫 and 測站點位 share this data, so both get the same header detail.
 async function loadLatestWeather(): Promise<void> {
-  const status = document.getElementById("data-status");
-  const setStatus = (text: string) => {
-    if (status) status.textContent = text;
+  const setDetail = (text: string): void => {
+    sourceStatus.setDetail("temperature", text);
+    sourceStatus.setDetail("stations", text);
   };
 
   try {
@@ -108,15 +119,15 @@ async function loadLatestWeather(): Promise<void> {
     const drawn = renderStations(map, stationLayer, latest.data);
     temperature.render(latest.data);
     if (drawn === 0) {
-      setStatus(`${latest.source} | 目前沒有可顯示的測站資料`);
+      setDetail("目前沒有可顯示的測站資料");
       return;
     }
     const time = latest.latest_observation_time
       ? formatObservationTime(latest.latest_observation_time)
       : "尚無觀測資料";
-    setStatus(`${latest.source} | 最新觀測：${time} | 測站 ${drawn} 站`);
+    setDetail(`最新觀測：${time} | 測站 ${drawn} 站`);
   } catch {
-    setStatus("目前無法取得後端氣象資料");
+    setDetail("目前無法取得後端氣象資料");
   }
 }
 

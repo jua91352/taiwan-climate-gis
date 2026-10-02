@@ -1,5 +1,6 @@
-// Typed client for the Flask REST API. All weather data comes from the
-// backend's SQLite database; the frontend never calls CWA directly.
+// Typed client for the Flask REST API. Weather data comes from the backend's
+// SQLite database; rainfall is fetched from CWA by the backend (live, cached).
+// The frontend never calls CWA directly.
 
 export interface Station {
   station_id: string;
@@ -86,6 +87,31 @@ export interface StationWeatherResponse {
   observation: Observation | null;
 }
 
+// Past-1-hour rainfall per CWA rain gauge (O-A0002-001). rainfall is null when
+// CWA reported trace (T), malfunction (X) or a missing value; see rainfall_status.
+export interface RainfallStation {
+  station_id: string;
+  station_name: string;
+  county_name: string | null;
+  town_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rainfall: number | null;
+  rainfall_status: "ok" | "trace" | "malfunction" | "missing";
+  unit: string;
+  observation_time: string;
+}
+
+export interface RainfallLatestResponse {
+  success: boolean;
+  source: string;
+  unit: string;
+  latest_observation_time: string | null;
+  count: number;
+  valid_count: number;
+  data: RainfallStation[];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -124,4 +150,5 @@ export const api = {
   stations: () => getJson<StationsResponse>("/api/stations"),
   stationWeather: (stationId: string) =>
     getJson<StationWeatherResponse>(`/api/weather/station/${encodeURIComponent(stationId)}`),
+  rainfallLatest: () => getJson<RainfallLatestResponse>("/api/rainfall/latest"),
 };

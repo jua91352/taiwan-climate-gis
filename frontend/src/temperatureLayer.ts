@@ -2,7 +2,8 @@ import L from "leaflet";
 import { api, type StationObservation } from "./api";
 import { CITY_CENTERS } from "./gis";
 import { hasValidCoordinates } from "./stations";
-import { createTemperatureHeatmap, type RgbColor, type TemperatureSample } from "./temperatureHeatmap";
+import { createHeatmapSurface, type HeatmapSample, type RgbColor } from "./heatmapSurface";
+import { createGradientLegend, setLegendNote } from "./legend";
 
 const TEMPERATURE_PANE = "temperature";
 
@@ -79,32 +80,18 @@ function hasValidTemperature(s: StationObservation): s is StationObservation & {
 // the heatmap color is clamped, so the bar's ends are flat like the map.
 const LEGEND_MIN = RAMP_STOPS[0].t - 2.5;
 const LEGEND_MAX = RAMP_STOPS[RAMP_STOPS.length - 1].t + 2.5;
-const legendPosition = (t: number): string => `${(((t - LEGEND_MIN) / (LEGEND_MAX - LEGEND_MIN)) * 100).toFixed(2)}%`;
+const legendPosition = (t: number): number => (t - LEGEND_MIN) / (LEGEND_MAX - LEGEND_MIN);
 
 /** Compact horizontal gradient built from the same stops temperatureRgb() blends. */
 function createLegend(): L.Control {
-  const legend = new L.Control({ position: "bottomright" });
-  legend.onAdd = () => {
-    const box = L.DomUtil.create("div", "temperature-legend");
-    const ticks = TEMPERATURE_BINS.slice(1).map((bin) => bin.min);
-    box.setAttribute("role", "img");
-    box.setAttribute("aria-label", `氣溫圖例：由藍（低於 ${ticks[0]} °C）漸變到紅（${ticks[ticks.length - 1]} °C 以上）`);
-    L.DomUtil.create("div", "temperature-legend-title", box).textContent = "氣溫 °C";
-    const bar = L.DomUtil.create("div", "temperature-legend-bar", box);
-    bar.style.background = `linear-gradient(to right, ${RAMP_STOPS.map(
-      (stop) => `rgb(${stop.rgb.join(", ")}) ${legendPosition(stop.t)}`,
-    ).join(", ")})`;
-    const scale = L.DomUtil.create("div", "temperature-legend-ticks", box);
-    for (const t of ticks) {
-      const tick = L.DomUtil.create("span", undefined, scale);
-      tick.style.left = legendPosition(t);
-      tick.textContent = String(t);
-    }
-    L.DomUtil.create("div", "temperature-legend-note", box).dataset.role = "count";
-    L.DomEvent.disableClickPropagation(box);
-    return box;
-  };
-  return legend;
+  const ticks = TEMPERATURE_BINS.slice(1).map((bin) => bin.min);
+  return createGradientLegend({
+    title: "氣溫 °C",
+    ariaLabel: `氣溫圖例：由藍（低於 ${ticks[0]} °C）漸變到紅（${ticks[ticks.length - 1]} °C 以上）`,
+    stops: RAMP_STOPS.map((stop) => ({ position: legendPosition(stop.t), rgb: stop.rgb })),
+    ticks: ticks.map((t) => ({ position: legendPosition(t), label: String(t) })),
+    className: "temperature-legend",
+  });
 }
 
 /** Pill showing a county's average, colored by its temperature bin. */
@@ -135,7 +122,7 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
   const countyGroup = L.layerGroup();
   const legend = createLegend();
   // Continuous surface under the circles/badges; part of the 氣溫 layer itself.
-  const heatmap = createTemperatureHeatmap(map, temperatureRgb);
+  const heatmap = createHeatmapSurface(map, temperatureRgb, "temperature-surface");
   layer.addLayer(heatmap.layer);
   let drawn = 0;
   let total = 0;
@@ -145,14 +132,12 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
   const isStationMode = (): boolean => map.getZoom() >= STATION_MODE_MIN_ZOOM;
 
   const updateLegendNote = (): void => {
-    const note = legend.getContainer()?.querySelector<HTMLElement>("[data-role=count]");
-    if (!note) return;
     if (isStationMode()) {
-      note.textContent = drawn > 0 ? `${drawn} / ${total} 站有有效氣溫` : "目前沒有可用的氣溫資料";
+      setLegendNote(legend, drawn > 0 ? `${drawn} / ${total} 站有有效氣溫` : "目前沒有可用的氣溫資料");
     } else if (countyState === "loading" || countyState === "idle") {
-      note.textContent = "縣市平均氣溫載入中…";
+      setLegendNote(legend, "縣市平均氣溫載入中…");
     } else {
-      note.textContent = countyCount > 0 ? `縣市平均氣溫（${countyCount} 縣市）` : "目前沒有可用的氣溫資料";
+      setLegendNote(legend, countyCount > 0 ? `縣市平均氣溫（${countyCount} 縣市）` : "目前沒有可用的氣溫資料");
     }
   };
 
@@ -213,10 +198,10 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
     stationGroup.clearLayers();
     drawn = 0;
     total = stations.length;
-    const samples: TemperatureSample[] = [];
+    const samples: HeatmapSample[] = [];
     for (const s of stations) {
       if (!hasValidCoordinates(s) || !hasValidTemperature(s)) continue;
-      samples.push({ lat: s.latitude, lng: s.longitude, temperature: s.temperature });
+      samples.push({ lat: s.latitude, lng: s.longitude, value: s.temperature });
       // Number in a small box filled with this exact temperature's heatmap
       // color, centered on the station. Non-interactive: clicks reach the
       // station dot / county polygon beneath.

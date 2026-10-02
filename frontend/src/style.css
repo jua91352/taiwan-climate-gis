@@ -326,7 +326,7 @@ body {
   color: #9aa5b1;
 }
 
-.temperature-legend {
+.map-legend {
   width: 200px;
   padding: 6px 10px 5px;
   font-size: 0.6875rem;
@@ -336,19 +336,19 @@ body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-.temperature-legend-title {
+.map-legend-title {
   margin-bottom: 4px;
   font-size: 0.75rem;
   font-weight: 600;
 }
 
-.temperature-legend-bar {
+.map-legend-bar {
   height: 10px;
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
-.temperature-legend-ticks {
+.map-legend-ticks {
   position: relative;
   height: 14px;
   margin-top: 2px;
@@ -356,13 +356,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.temperature-legend-ticks span {
+.map-legend-ticks span {
   position: absolute;
   top: 0;
   transform: translateX(-50%);
 }
 
-.temperature-legend-note {
+.map-legend-note {
   margin-top: 2px;
   color: #52606d;
 }
