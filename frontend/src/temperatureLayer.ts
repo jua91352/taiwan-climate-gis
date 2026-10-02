@@ -79,12 +79,33 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
     if (note) note.textContent = drawn > 0 ? `${drawn} / ${total} 站有有效氣溫` : "目前沒有可用的氣溫資料";
   };
 
+  // On narrow maps the attribution (bottom-right) can wrap and run under the
+  // legend (bottom-left). Raise the legend just enough to clear it, only when
+  // they actually collide; otherwise keep Leaflet's default position.
+  const clearAttribution = (): void => {
+    const box = legend.getContainer();
+    const attribution = map.getContainer().querySelector<HTMLElement>(".leaflet-control-attribution");
+    if (!box?.isConnected || !attribution) return;
+    box.style.marginBottom = "";
+    const l = box.getBoundingClientRect();
+    const a = attribution.getBoundingClientRect();
+    if (l.right > a.left && l.bottom > a.top) {
+      const base = parseFloat(getComputedStyle(box).marginBottom) || 0;
+      box.style.marginBottom = `${base + (l.bottom - a.top) + 4}px`;
+    }
+  };
+  const scheduleClear = (): void => {
+    requestAnimationFrame(clearAttribution);
+  };
+
   // The legend is shown only while the temperature layer is on.
   layer.on("add", () => {
     legend.addTo(map);
     updateLegendCount();
+    scheduleClear();
   });
   layer.on("remove", () => legend.remove());
+  map.on("baselayerchange resize", scheduleClear);
 
   map.on("zoomend", () => {
     const radius = radiusForZoom(map.getZoom());

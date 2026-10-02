@@ -68,6 +68,13 @@ export function createMap(container: HTMLElement): MapContext {
 
   const layersControl = L.control.layers(baseLayers, {}, { collapsed: false }).addTo(map);
 
+  // Name the two groups for assistive technology (no visual change).
+  const controlBox = layersControl.getContainer();
+  controlBox?.querySelector(".leaflet-control-layers-base")?.setAttribute("role", "radiogroup");
+  controlBox?.querySelector(".leaflet-control-layers-base")?.setAttribute("aria-label", "底圖");
+  controlBox?.querySelector(".leaflet-control-layers-overlays")?.setAttribute("role", "group");
+  controlBox?.querySelector(".leaflet-control-layers-overlays")?.setAttribute("aria-label", "圖層");
+
   // Leaflet only re-measures on window resize. The panels below the map change
   // height as county data loads, so re-measure whenever the container resizes;
   // invalidateSize() keeps the current center (e.g. a CITY_CENTERS view).

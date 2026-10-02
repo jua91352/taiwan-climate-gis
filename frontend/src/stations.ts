@@ -4,6 +4,13 @@ import type { StationObservation } from "./api";
 const STATION_PANE = "stations";
 const MISSING = "資料不足";
 
+// Keep auto-panned popups clear of the expanded layer control (top-right,
+// ~100 px wide), which Leaflet draws above popups.
+const POPUP_OPTIONS: L.PopupOptions = {
+  autoPanPaddingTopLeft: L.point(10, 10),
+  autoPanPaddingBottomRight: L.point(120, 10),
+};
+
 // Small markers above the county polygons (overlayPane z-index 400) so that a
 // selected county's bringToFront() never covers them, but below tooltips/popups.
 const STATION_STYLE: L.CircleMarkerOptions = {
@@ -92,7 +99,7 @@ export function renderStations(map: L.Map, layer: L.LayerGroup, stations: Statio
   for (const station of stations) {
     if (!hasValidCoordinates(station)) continue;
     L.circleMarker([station.latitude, station.longitude], style)
-      .bindPopup(() => createPopupContent(station))
+      .bindPopup(() => createPopupContent(station), POPUP_OPTIONS)
       .addTo(layer);
     drawn++;
   }
