@@ -50,12 +50,13 @@ const counties = createCountyLayer(map, {
 counties.layer.addTo(map);
 layersControl.addOverlay(counties.layer, "縣市邊界");
 
+// Station markers are off by default; the user can enable them via 測站.
 const stationLayer = createStationLayer(map);
-stationLayer.addTo(map);
 layersControl.addOverlay(stationLayer, "測站");
 
-// Weather layer, off by default; uses the same /api/weather/latest data.
+// Weather layer, on by default; uses the same /api/weather/latest data.
 const temperature = createTemperatureLayer(map);
+temperature.layer.addTo(map);
 layersControl.addOverlay(temperature.layer, "氣溫");
 
 async function loadLatestWeather(): Promise<void> {
