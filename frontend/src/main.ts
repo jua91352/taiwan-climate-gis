@@ -6,6 +6,7 @@ import { api } from "./api";
 import { createStationLayer, formatObservationTime, renderStations } from "./stations";
 import { createCountyWeatherPanel } from "./countyWeather";
 import { createHistoryChart } from "./historyChart";
+import { createTemperatureLayer } from "./temperatureLayer";
 
 const container = document.getElementById("map");
 const panelContainer = document.getElementById("county-weather");
@@ -31,6 +32,10 @@ const stationLayer = createStationLayer(map);
 stationLayer.addTo(map);
 layersControl.addOverlay(stationLayer, "測站");
 
+// Weather layer, off by default; uses the same /api/weather/latest data.
+const temperature = createTemperatureLayer(map);
+layersControl.addOverlay(temperature.layer, "氣溫");
+
 async function loadLatestWeather(): Promise<void> {
   const status = document.getElementById("data-status");
   const setStatus = (text: string) => {
@@ -40,6 +45,7 @@ async function loadLatestWeather(): Promise<void> {
   try {
     const latest = await api.latestWeather();
     const drawn = renderStations(map, stationLayer, latest.data);
+    temperature.render(latest.data);
     if (drawn === 0) {
       setStatus(`${latest.source} | 目前沒有可顯示的測站資料`);
       return;
