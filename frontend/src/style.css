@@ -34,7 +34,7 @@ body {
   top: 12px;
   left: 12px;
   z-index: 10;
-  max-width: min(380px, calc(100% - 24px - 124px)); /* leave room for the layer control */
+  max-width: min(380px, calc(100% - 24px - 268px)); /* leave room for the map controls panel */
   padding: 10px 14px;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid #d9e2ec;
@@ -403,4 +403,380 @@ body {
 .county-tooltip {
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+/* 氣溫數字標籤 off: hide station value tags; county badges shrink to color dots. */
+.temp-labels-hidden .leaflet-tooltip.station-temp-label {
+  display: none;
+}
+
+.temp-labels-hidden .county-temp {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  font-size: 0;
+}
+
+/* Right-side map controls panel (mapControls.ts). Dark, compact, one warm accent. */
+.map-controls {
+  --mc-bg: #1d2433;
+  --mc-card: #283044;
+  --mc-card-hover: #323c54;
+  --mc-line: #3a4560;
+  --mc-text: #eef1f7;
+  --mc-muted: #a3adc2;
+  --mc-dim: #78839b;
+  --mc-accent: #ffb26b;
+  --mc-accent-soft: rgba(255, 178, 107, 0.16);
+  --mc-accent-text: #ffd9b5;
+  --mc-focus: #8ccaff;
+
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 11; /* above the header, so an expanded panel on a phone is never hidden */
+  display: flex;
+  flex-direction: column;
+  width: 256px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  color: var(--mc-text);
+  font-size: 0.8125rem;
+  background: var(--mc-bg);
+  border: 1px solid var(--mc-line);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(10, 14, 24, 0.35);
+  overflow: hidden;
+}
+
+:where(.map-controls) button,
+:where(.map-controls) label {
+  font: inherit;
+  color: inherit;
+}
+
+.map-controls :focus-visible,
+.map-controls input:focus-visible + .mc-base-thumb,
+.map-controls input:focus-visible ~ .mc-switch {
+  outline: 2px solid var(--mc-focus);
+  outline-offset: 2px;
+}
+
+.mc-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.mc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  font-weight: 600;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mc-head:focus-visible {
+  outline-offset: -3px;
+  border-radius: 14px;
+}
+
+.mc-head .mc-icon:first-child {
+  color: var(--mc-accent);
+}
+
+.mc-head .mc-icon:last-child {
+  margin-left: auto;
+  color: var(--mc-muted);
+  transform: rotate(180deg);
+}
+
+.map-controls.is-collapsed {
+  width: auto;
+}
+
+.map-controls.is-collapsed .mc-head .mc-icon:last-child {
+  transform: none;
+}
+
+.map-controls.is-collapsed .mc-body {
+  display: none;
+}
+
+.mc-body {
+  padding: 0 12px 12px;
+  overflow-y: auto;
+}
+
+.mc-section-title {
+  margin: 12px 2px 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--mc-muted);
+}
+
+.mc-section-title:first-child {
+  margin-top: 2px;
+}
+
+/* Weather layer tiles */
+.mc-layer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mc-layer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 8px 2px 6px;
+  color: var(--mc-muted);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  background: var(--mc-card);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.mc-layer .mc-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.mc-layer-label {
+  white-space: nowrap;
+}
+
+.mc-layer:not(.is-soon):hover {
+  color: var(--mc-text);
+  background: var(--mc-card-hover);
+}
+
+.mc-layer[aria-pressed="true"] {
+  color: var(--mc-accent-text);
+  background: var(--mc-accent-soft);
+  border-color: var(--mc-accent);
+}
+
+.mc-layer[aria-pressed="true"] .mc-icon {
+  color: var(--mc-accent);
+}
+
+.mc-layer[aria-pressed="true"]:hover {
+  background: rgba(255, 178, 107, 0.24);
+}
+
+/* Not built yet: intentional, quieter look with a 即將提供 tag; clicks do nothing. */
+.map-controls .is-soon {
+  color: var(--mc-dim);
+  background: transparent;
+  border: 1px dashed var(--mc-line);
+  cursor: not-allowed;
+}
+
+.mc-soon {
+  font-size: 0.5625rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--mc-dim);
+}
+
+/* Display option switches */
+.mc-options {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.mc-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--mc-card);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.mc-option:hover {
+  background: var(--mc-card-hover);
+}
+
+.mc-option .mc-icon {
+  color: var(--mc-muted);
+}
+
+.map-controls input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mc-switch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  margin-left: auto;
+  background: #4a5572;
+  border-radius: 999px;
+  transition: background-color 0.15s;
+}
+
+.mc-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+
+.mc-option input:checked ~ .mc-switch {
+  background: var(--mc-accent);
+}
+
+.mc-option input:checked ~ .mc-switch::after {
+  transform: translateX(12px);
+}
+
+.mc-option input:checked ~ .mc-icon {
+  color: var(--mc-accent);
+}
+
+/* Base map preview cards: real provider tiles of Taiwan */
+.mc-base-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mc-base {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 4px 5px;
+  background: var(--mc-card);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.mc-base:hover {
+  background: var(--mc-card-hover);
+}
+
+.mc-base-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 5 / 4;
+  background-color: #8a94a8;
+  background-repeat: no-repeat;
+  background-size: 130%;
+  background-position: 60% 100%;
+  border-radius: 7px;
+}
+
+.mc-base-name {
+  font-size: 0.6875rem;
+  text-align: center;
+  color: var(--mc-muted);
+  white-space: nowrap;
+}
+
+.mc-base input:checked + .mc-base-thumb {
+  box-shadow: 0 0 0 2px var(--mc-accent);
+}
+
+.mc-base input:checked + .mc-base-thumb::after {
+  content: "✓";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #3a2008;
+  background: var(--mc-accent);
+  border-radius: 50%;
+}
+
+.mc-base input:checked ~ .mc-base-name {
+  font-weight: 600;
+  color: var(--mc-accent-text);
+}
+
+/* Locate (later batch) */
+.mc-locate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  text-align: left;
+  border-radius: 10px;
+}
+
+.mc-locate .mc-soon {
+  margin-left: auto;
+  padding: 3px 6px;
+  border: 1px solid var(--mc-line);
+  border-radius: 999px;
+}
+
+/* Short viewports: tighten the panel so it clears the bottom-right legend. */
+@media (max-height: 760px) {
+  .mc-head {
+    padding-block: 8px;
+  }
+
+  .mc-section-title {
+    margin-block: 8px 5px;
+  }
+
+  .mc-layer {
+    min-height: 54px;
+    padding-block: 5px 4px;
+  }
+
+  .mc-option {
+    padding-block: 5px;
+  }
+
+  .mc-locate {
+    margin-top: 8px;
+    padding-block: 7px;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-header {
+    max-width: calc(100% - 24px - 150px); /* collapsed panel pill */
+  }
+
+  .map-controls {
+    width: min(256px, calc(100% - 24px));
+  }
 }

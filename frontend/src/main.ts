@@ -7,6 +7,7 @@ import { createStationLayer, formatObservationTime, renderStations } from "./sta
 import { createCountyWeatherPanel } from "./countyWeather";
 import { createHistoryChart } from "./historyChart";
 import { createTemperatureLayer } from "./temperatureLayer";
+import { createMapControls, layerToggle, type Toggle } from "./mapControls";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -16,7 +17,7 @@ if (!container || !detailsContainer || !panelContainer || !historyContainer) {
   throw new Error("Map container #map, #county-details, #county-weather or #county-history not found");
 }
 
-const { map, layersControl } = createMap(container);
+const { map, baseMaps } = createMap(container);
 
 // On narrow screens the panels open as a bottom sheet; lift Leaflet's
 // bottom-right controls (zoom, legend, attribution) to sit just above it.
@@ -29,8 +30,11 @@ new ResizeObserver(updateSheetOffset).observe(detailsContainer);
 narrowScreen.addEventListener("change", updateSheetOffset);
 
 // The weather + history panels float over the map only while a county is selected.
+// On narrow screens the sheet lifts the legend up the right edge; fold the
+// map controls panel away so it does not cover it (the user can reopen it).
 const setDetailsOpen = (open: boolean): void => {
   detailsContainer.hidden = !open;
+  if (open && narrowScreen.matches) mapControls.setCollapsed(true);
   updateSheetOffset();
 };
 const countyWeather = createCountyWeatherPanel(panelContainer, {
@@ -48,16 +52,40 @@ const counties = createCountyLayer(map, {
   },
 });
 counties.layer.addTo(map);
-layersControl.addOverlay(counties.layer, "縣市邊界");
 
 // Station markers are off by default; the user can enable them via 測站.
 const stationLayer = createStationLayer(map);
-layersControl.addOverlay(stationLayer, "測站");
 
 // Weather layer, on by default; uses the same /api/weather/latest data.
 const temperature = createTemperatureLayer(map);
 temperature.layer.addTo(map);
-layersControl.addOverlay(temperature.layer, "氣溫");
+
+// 氣溫數字標籤: show/hide the numbers drawn by the temperature layer (CSS only).
+const temperatureLabels: Toggle = {
+  isOn: () => !container.classList.contains("temp-labels-hidden"),
+  set: (on) => container.classList.toggle("temp-labels-hidden", !on),
+};
+
+// Right-side panel. Items without a toggle are shown as 即將提供 (later batches).
+const mapControls = createMapControls(map, {
+  layers: [
+    { label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
+    { label: "雨量", icon: "rain" },
+    { label: "雷達", icon: "radar" },
+    { label: "颱風", icon: "typhoon" },
+    { label: "風速風向", icon: "wind" },
+    { label: "濕度", icon: "humidity" },
+    { label: "天氣", icon: "weather" },
+    { label: "測站點位", icon: "station", toggle: layerToggle(map, stationLayer) },
+  ],
+  options: [
+    { label: "縣市界線", icon: "boundary", toggle: layerToggle(map, counties.layer) },
+    { label: "氣溫數字標籤", icon: "label", toggle: temperatureLabels },
+  ],
+  baseMaps,
+  collapsed: window.matchMedia("(max-width: 600px)").matches,
+});
+container.after(mapControls.element);
 
 async function loadLatestWeather(): Promise<void> {
   const status = document.getElementById("data-status");
