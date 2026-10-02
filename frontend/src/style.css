@@ -327,8 +327,9 @@ body {
 }
 
 .temperature-legend {
-  padding: 6px 10px;
-  font-size: 0.75rem;
+  width: 200px;
+  padding: 6px 10px 5px;
+  font-size: 0.6875rem;
   color: #1f2933;
   background: rgba(255, 255, 255, 0.92);
   border-radius: 6px;
@@ -337,26 +338,32 @@ body {
 
 .temperature-legend-title {
   margin-bottom: 4px;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
-.temperature-legend-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.5;
+.temperature-legend-bar {
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
-.temperature-legend-swatch {
-  width: 12px;
-  height: 12px;
-  border: 1px solid #ffffff;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+.temperature-legend-ticks {
+  position: relative;
+  height: 14px;
+  margin-top: 2px;
+  color: #3e4c59;
+  font-variant-numeric: tabular-nums;
+}
+
+.temperature-legend-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
 }
 
 .temperature-legend-note {
-  margin-top: 4px;
+  margin-top: 2px;
   color: #52606d;
 }
 
@@ -384,20 +391,22 @@ body {
   color: #ffffff;
 }
 
-/* Station temperature value next to each circle (zoomed-in mode). */
-.leaflet-tooltip.station-temp-label {
-  padding: 0 4px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #1f2933;
-  background: rgba(255, 255, 255, 0.9);
+/* Station temperature value (zoomed-in mode): plain text centered on the
+   station, with a thin white halo so it reads over the heatmap. */
+.station-temp-icon {
+  background: none;
   border: 0;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.leaflet-tooltip.station-temp-label::before {
-  display: none;
+.station-temp-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: #1f2933;
+  text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 3px #ffffff;
 }
 
 .county-tooltip {
@@ -406,7 +415,7 @@ body {
 }
 
 /* 氣溫數字標籤 off: hide station value tags; county badges shrink to color dots. */
-.temp-labels-hidden .leaflet-tooltip.station-temp-label {
+.temp-labels-hidden .station-temp-label {
   display: none;
 }
 

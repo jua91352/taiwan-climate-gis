@@ -7,7 +7,7 @@ import { createTemperatureHeatmap, type RgbColor, type TemperatureSample } from 
 const TEMPERATURE_PANE = "temperature";
 
 // Cool -> warm ramp (blue, cyan, green, yellow, orange, red) in fixed 5 °C bins,
-// shared by the legend, county badges, station circles and the heatmap.
+// shared by the legend, county badges and the heatmap.
 // Checked with the dataviz palette validator: lightness band, chroma floor and
 // adjacent normal-vision ΔE >= 15 pass; the CVD/contrast warnings are relieved
 // by the numeric labels. Fixed bins keep colors comparable across times.
@@ -75,25 +75,30 @@ function hasValidTemperature(s: StationObservation): s is StationObservation & {
   return typeof s.temperature === "number" && Number.isFinite(s.temperature) && s.temperature > -90;
 }
 
-function radiusForZoom(zoom: number): number {
-  if (zoom <= 7) return 5;
-  if (zoom <= 9) return 7;
-  return 9;
-}
+// Legend domain: half a bin beyond the first/last ramp stop. Outside the stops
+// the heatmap color is clamped, so the bar's ends are flat like the map.
+const LEGEND_MIN = RAMP_STOPS[0].t - 2.5;
+const LEGEND_MAX = RAMP_STOPS[RAMP_STOPS.length - 1].t + 2.5;
+const legendPosition = (t: number): string => `${(((t - LEGEND_MIN) / (LEGEND_MAX - LEGEND_MIN)) * 100).toFixed(2)}%`;
 
+/** Compact horizontal gradient built from the same stops temperatureRgb() blends. */
 function createLegend(): L.Control {
   const legend = new L.Control({ position: "bottomright" });
   legend.onAdd = () => {
     const box = L.DomUtil.create("div", "temperature-legend");
+    const ticks = TEMPERATURE_BINS.slice(1).map((bin) => bin.min);
     box.setAttribute("role", "img");
-    box.setAttribute("aria-label", `氣溫圖例：${TEMPERATURE_BINS.map((b) => b.label).join("、")} °C`);
-    const title = L.DomUtil.create("div", "temperature-legend-title", box);
-    title.textContent = "氣溫 (°C)";
-    for (const bin of [...TEMPERATURE_BINS].reverse()) {
-      const row = L.DomUtil.create("div", "temperature-legend-row", box);
-      const swatch = L.DomUtil.create("span", "temperature-legend-swatch", row);
-      swatch.style.background = bin.color;
-      L.DomUtil.create("span", undefined, row).textContent = bin.label;
+    box.setAttribute("aria-label", `氣溫圖例：由藍（低於 ${ticks[0]} °C）漸變到紅（${ticks[ticks.length - 1]} °C 以上）`);
+    L.DomUtil.create("div", "temperature-legend-title", box).textContent = "氣溫 °C";
+    const bar = L.DomUtil.create("div", "temperature-legend-bar", box);
+    bar.style.background = `linear-gradient(to right, ${RAMP_STOPS.map(
+      (stop) => `rgb(${stop.rgb.join(", ")}) ${legendPosition(stop.t)}`,
+    ).join(", ")})`;
+    const scale = L.DomUtil.create("div", "temperature-legend-ticks", box);
+    for (const t of ticks) {
+      const tick = L.DomUtil.create("span", undefined, scale);
+      tick.style.left = legendPosition(t);
+      tick.textContent = String(t);
     }
     L.DomUtil.create("div", "temperature-legend-note", box).dataset.role = "count";
     L.DomEvent.disableClickPropagation(box);
@@ -102,7 +107,7 @@ function createLegend(): L.Control {
   return legend;
 }
 
-/** Pill showing a county's average, colored by the same bins as the station circles. */
+/** Pill showing a county's average, colored by its temperature bin. */
 function countyBadge(county: string, avg: number): L.DivIcon {
   const pill = document.createElement("div");
   pill.className = needsLightText(temperatureColor(avg)) ? "county-temp county-temp-dark" : "county-temp";
@@ -114,15 +119,14 @@ function countyBadge(county: string, avg: number): L.DivIcon {
 
 export interface TemperatureLayer {
   layer: L.LayerGroup;
-  /** Replace the station-level circles; returns how many stations have a valid temperature. */
+  /** Replace the station-level labels; returns how many stations have a valid temperature. */
   render(stations: StationObservation[]): number;
 }
 
 export function createTemperatureLayer(map: L.Map): TemperatureLayer {
-  // Above the station dots (450) so the temperature color is fully visible,
-  // below tooltips/popups. Everything here is non-interactive, so clicks pass
-  // through: a circle center hits the station dot (popup), anything else hits
-  // the county polygon underneath.
+  // Above the station dots (450), below tooltips/popups. Everything here is
+  // non-interactive, so clicks pass through to the station dot (popup) or the
+  // county polygon underneath.
   if (!map.getPane(TEMPERATURE_PANE)) {
     map.createPane(TEMPERATURE_PANE).style.zIndex = "460";
   }
@@ -202,40 +206,28 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
   layer.on("remove", () => legend.remove());
 
   map.on("zoomend", () => {
-    const radius = radiusForZoom(map.getZoom());
-    stationGroup.eachLayer((circle) => {
-      if (circle instanceof L.CircleMarker) circle.setRadius(radius);
-    });
     if (map.hasLayer(layer)) applyMode();
   });
 
   const render = (stations: StationObservation[]): number => {
     stationGroup.clearLayers();
-    const radius = radiusForZoom(map.getZoom());
     drawn = 0;
     total = stations.length;
     const samples: TemperatureSample[] = [];
     for (const s of stations) {
       if (!hasValidCoordinates(s) || !hasValidTemperature(s)) continue;
       samples.push({ lat: s.latitude, lng: s.longitude, temperature: s.temperature });
-      // Non-interactive: clicks reach the station dot / county polygon beneath;
-      // full details are in that station's popup.
-      L.circleMarker([s.latitude, s.longitude], {
+      // Just the number, centered on the station; the heatmap carries the color.
+      // Non-interactive: clicks reach the station dot / county polygon beneath.
+      const label = document.createElement("span");
+      label.className = "station-temp-label";
+      label.textContent = `${s.temperature.toFixed(1)}°`;
+      L.marker([s.latitude, s.longitude], {
+        icon: L.divIcon({ className: "station-temp-icon", html: label, iconSize: undefined }),
         pane: TEMPERATURE_PANE,
         interactive: false,
-        radius,
-        color: "#ffffff",
-        weight: 1,
-        fillColor: temperatureColor(s.temperature),
-        fillOpacity: 0.85,
-      })
-        .bindTooltip(`${s.temperature.toFixed(1)}°`, {
-          permanent: true,
-          direction: "right",
-          offset: [8, 0],
-          className: "station-temp-label",
-        })
-        .addTo(stationGroup);
+        keyboard: false,
+      }).addTo(stationGroup);
       drawn++;
     }
     heatmap.update(samples);
