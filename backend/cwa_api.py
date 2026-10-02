@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from backend.db import init_db, save_observations
 
 DATASET_ID = "O-A0003-001"
-CWA_URL = f"https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/{DATASET_ID}"
+CWA_FILEAPI_URL = "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/{dataset_id}"
 REQUEST_TIMEOUT = 30  # seconds
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -35,13 +35,14 @@ def get_api_key() -> str:
     return key
 
 
-def fetch_weather_data(timeout: int = REQUEST_TIMEOUT) -> dict:
-    """Download the O-A0003-001 JSON payload."""
+def fetch_dataset(dataset_id: str, timeout: int = REQUEST_TIMEOUT) -> dict:
+    """Download one CWA Open Data file-API dataset as JSON."""
     params = {"Authorization": get_api_key(), "downloadType": "WEB", "format": "JSON"}
+    url = CWA_FILEAPI_URL.format(dataset_id=dataset_id)
     # Exception messages from requests can contain the full URL (and thus the key),
     # so only the exception type is surfaced.
     try:
-        response = requests.get(CWA_URL, params=params, timeout=timeout)
+        response = requests.get(url, params=params, timeout=timeout)
     except requests.RequestException as e:
         raise CWAError(f"Network error while calling CWA: {type(e).__name__}") from None
 
@@ -52,6 +53,11 @@ def fetch_weather_data(timeout: int = REQUEST_TIMEOUT) -> dict:
         return response.json()
     except ValueError:
         raise CWAError("CWA response is not valid JSON") from None
+
+
+def fetch_weather_data(timeout: int = REQUEST_TIMEOUT) -> dict:
+    """Download the O-A0003-001 JSON payload."""
+    return fetch_dataset(DATASET_ID, timeout)
 
 
 def to_number(value) -> float | None:

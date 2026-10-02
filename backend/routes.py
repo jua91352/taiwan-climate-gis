@@ -1,10 +1,13 @@
-"""Weather REST API. All data is read from SQLite; CWA is never called here."""
+"""Weather REST API. Weather data is read from SQLite; only /rainfall/latest
+calls CWA (live, cached, not stored yet) via backend.cwa_rainfall."""
 import math
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
 from backend import db
+from backend.cwa_api import CWAError
+from backend.cwa_rainfall import RAINFALL_DATASET_ID, UNIT, get_latest_rainfall
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -128,3 +131,21 @@ def weather_station(station_id: str):
     latest = db.get_latest_observation_for_station(station["station_id"])
     observation = {k: latest[k] for k in OBSERVATION_FIELDS} if latest else None
     return jsonify(source=DATA_SOURCE, station=station, observation=observation)
+
+
+@api.get("/rainfall/latest")
+def rainfall_latest():
+    try:
+        rows = get_latest_rainfall()
+    except CWAError as e:
+        # CWAError messages never contain the API key (see backend.cwa_api).
+        return jsonify(success=False, error=str(e)), 502
+    return jsonify(
+        success=True,
+        source=f"CWA {RAINFALL_DATASET_ID}",
+        unit=UNIT,
+        latest_observation_time=latest_time(rows),
+        count=len(rows),
+        valid_count=sum(r["rainfall"] is not None for r in rows),
+        data=rows,
+    )
