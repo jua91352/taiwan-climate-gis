@@ -5,18 +5,24 @@ import { createCountyLayer } from "./gis";
 import { api } from "./api";
 import { createStationLayer, formatObservationTime, renderStations } from "./stations";
 import { createCountyWeatherPanel } from "./countyWeather";
+import { createHistoryChart } from "./historyChart";
 
 const container = document.getElementById("map");
 const panelContainer = document.getElementById("county-weather");
-if (!container || !panelContainer) {
-  throw new Error("Map container #map or #county-weather not found");
+const historyContainer = document.getElementById("county-history");
+if (!container || !panelContainer || !historyContainer) {
+  throw new Error("Map container #map, #county-weather or #county-history not found");
 }
 
 const { map, layersControl } = createMap(container);
 
 const countyWeather = createCountyWeatherPanel(panelContainer);
+const historyChart = createHistoryChart(historyContainer);
 const counties = createCountyLayer(map, {
-  onSelect: (name) => void countyWeather.show(name),
+  onSelect: (name) => {
+    void countyWeather.show(name);
+    void historyChart.show(name);
+  },
 });
 counties.layer.addTo(map);
 layersControl.addOverlay(counties.layer, "縣市邊界");

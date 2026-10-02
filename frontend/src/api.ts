@@ -116,9 +116,10 @@ export const api = {
   latestWeather: () => getJson<LatestWeatherResponse>("/api/weather/latest"),
   countyWeather: (county: string, signal?: AbortSignal) =>
     getJson<CountyWeatherResponse>(`/api/weather/county/${encodeURIComponent(county)}`, signal),
-  countyHistory: (county: string, days: number) =>
+  countyHistory: (county: string, days: number, signal?: AbortSignal) =>
     getJson<CountyHistoryResponse>(
       `/api/weather/history?${new URLSearchParams({ county, days: String(days) })}`,
+      signal,
     ),
   stations: () => getJson<StationsResponse>("/api/stations"),
   stationWeather: (stationId: string) =>

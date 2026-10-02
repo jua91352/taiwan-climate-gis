@@ -68,5 +68,10 @@ export function createMap(container: HTMLElement): MapContext {
 
   const layersControl = L.control.layers(baseLayers, {}, { collapsed: false }).addTo(map);
 
+  // Leaflet only re-measures on window resize. The panels below the map change
+  // height as county data loads, so re-measure whenever the container resizes;
+  // invalidateSize() keeps the current center (e.g. a CITY_CENTERS view).
+  new ResizeObserver(() => map.invalidateSize()).observe(container);
+
   return { map, layersControl };
 }
