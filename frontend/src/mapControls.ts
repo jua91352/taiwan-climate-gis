@@ -44,6 +44,8 @@ export interface ControlItem {
   icon: IconName;
   /** Omitted → shown as 即將提供: visible, focusable, but does nothing. */
   toggle?: Toggle;
+  /** Options only: usable only while this returns true (shown off + disabled otherwise). */
+  available?: () => boolean;
 }
 
 export interface BaseMapOption {
@@ -54,7 +56,7 @@ export interface BaseMapOption {
 }
 
 export interface MapControlsOptions {
-  /** Weather layers, shown as a tile grid. */
+  /** Main weather layers, shown as a tile grid. Mutually exclusive: at most one is on. */
   layers: ControlItem[];
   /** Display options, shown as switches. */
   options: ControlItem[];
@@ -113,7 +115,11 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
   const body = el("div", "mc-body");
   body.id = "map-controls-body";
 
-  // --- Weather layer tiles ---
+  // --- Main weather layer tiles (mutually exclusive) ---
+  const mainToggles = opts.layers.flatMap((item) => (item.toggle ? [item.toggle] : []));
+  const clearMainLayers = (): void => {
+    for (const t of mainToggles) if (t.isOn()) t.set(false);
+  };
   const layerGrid = el("div", "mc-layer-grid");
   layerGrid.setAttribute("role", "group");
   layerGrid.setAttribute("aria-labelledby", "mc-title-layers");
@@ -128,8 +134,12 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
       btn.title = `${item.label}：${COMING_SOON}`;
       btn.insertAdjacentHTML("beforeend", `<span class="mc-soon" aria-hidden="true">${COMING_SOON}</span>`);
     } else {
+      // Clicking the active layer turns everything off; any other layer
+      // first clears every main layer, so two can never be on together.
       btn.addEventListener("click", () => {
-        toggle.set(!toggle.isOn());
+        const wasOn = toggle.isOn();
+        clearMainLayers();
+        if (!wasOn) toggle.set(true);
         refreshAll();
       });
       refreshers.push(() => btn.setAttribute("aria-pressed", String(toggle.isOn())));
@@ -150,8 +160,14 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
         toggle.set(input.checked);
         refreshAll();
       });
+      // While unavailable the switch shows off and is disabled, but the
+      // toggle's own state (the user's preference) is left untouched.
+      const available = item.available;
       refreshers.push(() => {
-        input.checked = toggle.isOn();
+        const usable = available ? available() : true;
+        input.disabled = !usable;
+        input.checked = usable && toggle.isOn();
+        row.classList.toggle("is-disabled", !usable);
       });
     } else {
       input.disabled = true;

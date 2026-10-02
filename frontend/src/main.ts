@@ -54,7 +54,7 @@ const counties = createCountyLayer(map, {
 });
 counties.layer.addTo(map);
 
-// Station markers are off by default; the user can enable them via 測站.
+// Station markers are off by default; 測站點位 is one of the exclusive main layers.
 const stationLayer = createStationLayer(map);
 
 // Weather layer, on by default; uses the same /api/weather/latest data.
@@ -71,7 +71,8 @@ const temperatureLabels: Toggle = {
 // the expanded panel, so fold it away after a successful fix.
 const locateMe = createLocator(map, container.parentElement ?? document.body);
 
-// Right-side panel. Items without a toggle are shown as 即將提供 (later batches).
+// Right-side panel. The 8 main weather layers are mutually exclusive (at most one
+// on); items without a toggle are shown as 即將提供 (later batches).
 const mapControls = createMapControls(map, {
   layers: [
     { label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
@@ -85,7 +86,8 @@ const mapControls = createMapControls(map, {
   ],
   options: [
     { label: "縣市界線", icon: "boundary", toggle: layerToggle(map, counties.layer) },
-    { label: "氣溫數字標籤", icon: "label", toggle: temperatureLabels },
+    // Only meaningful with the 氣溫 layer on; the preference survives layer switches.
+    { label: "氣溫數字標籤", icon: "label", toggle: temperatureLabels, available: () => map.hasLayer(temperature.layer) },
   ],
   baseMaps,
   locate: async () => {

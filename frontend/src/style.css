@@ -630,6 +630,15 @@ body {
   background: var(--mc-card-hover);
 }
 
+.mc-option.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mc-option.is-disabled:hover {
+  background: var(--mc-card);
+}
+
 .mc-option .mc-icon {
   color: var(--mc-muted);
 }
