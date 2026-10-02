@@ -35,6 +35,11 @@ body {
   color: #52606d;
 }
 
+.app-header .data-status {
+  font-size: 0.8125rem;
+  color: #3e4c59;
+}
+
 .app-main {
   flex: 1;
   display: flex;
