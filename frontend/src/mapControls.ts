@@ -59,6 +59,8 @@ export interface MapControlsOptions {
   /** Display options, shown as switches. */
   options: ControlItem[];
   baseMaps: BaseMapOption[];
+  /** 定位我的位置 handler; omitted → shown as 即將提供. Resolves when finished. */
+  locate?: () => Promise<void>;
   /** Start collapsed (used on narrow screens). */
   collapsed?: boolean;
 }
@@ -191,12 +193,29 @@ export function createMapControls(map: L.Map, opts: MapControlsOptions): MapCont
     baseGrid.append(card);
   }
 
-  // --- Locate (later batch) ---
-  const locate = el("button", "mc-locate is-soon", `${icon("locate")}<span>定位我的位置</span><span class="mc-soon" aria-hidden="true">${COMING_SOON}</span>`);
+  // --- Locate ---
+  const LOCATE_LABEL = "定位我的位置";
+  const locate = el("button", "mc-locate", `${icon("locate")}<span class="mc-locate-label">${LOCATE_LABEL}</span>`);
   locate.type = "button";
-  locate.setAttribute("aria-disabled", "true");
-  locate.setAttribute("aria-label", `定位我的位置（${COMING_SOON}）`);
-  locate.title = `定位我的位置：${COMING_SOON}`;
+  const runLocate = opts.locate;
+  if (!runLocate) {
+    locate.classList.add("is-soon");
+    locate.insertAdjacentHTML("beforeend", `<span class="mc-soon" aria-hidden="true">${COMING_SOON}</span>`);
+    locate.setAttribute("aria-disabled", "true");
+    locate.setAttribute("aria-label", `${LOCATE_LABEL}（${COMING_SOON}）`);
+    locate.title = `${LOCATE_LABEL}：${COMING_SOON}`;
+  } else {
+    const label = locate.querySelector<HTMLElement>(".mc-locate-label");
+    locate.addEventListener("click", () => {
+      if (locate.getAttribute("aria-busy") === "true") return;
+      locate.setAttribute("aria-busy", "true");
+      if (label) label.textContent = "定位中…";
+      void runLocate().finally(() => {
+        locate.removeAttribute("aria-busy");
+        if (label) label.textContent = LOCATE_LABEL;
+      });
+    });
+  }
 
   body.append(
     sectionTitle("圖層", "mc-title-layers"),

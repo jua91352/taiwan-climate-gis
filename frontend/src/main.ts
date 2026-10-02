@@ -8,6 +8,7 @@ import { createCountyWeatherPanel } from "./countyWeather";
 import { createHistoryChart } from "./historyChart";
 import { createTemperatureLayer } from "./temperatureLayer";
 import { createMapControls, layerToggle, type Toggle } from "./mapControls";
+import { createLocator } from "./geolocation";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -66,6 +67,10 @@ const temperatureLabels: Toggle = {
   set: (on) => container.classList.toggle("temp-labels-hidden", !on),
 };
 
+// 定位我的位置 (browser only). On narrow screens the located marker sits under
+// the expanded panel, so fold it away after a successful fix.
+const locateMe = createLocator(map, container.parentElement ?? document.body);
+
 // Right-side panel. Items without a toggle are shown as 即將提供 (later batches).
 const mapControls = createMapControls(map, {
   layers: [
@@ -83,6 +88,9 @@ const mapControls = createMapControls(map, {
     { label: "氣溫數字標籤", icon: "label", toggle: temperatureLabels },
   ],
   baseMaps,
+  locate: async () => {
+    if ((await locateMe()) && narrowScreen.matches) mapControls.setCollapsed(true);
+  },
   collapsed: window.matchMedia("(max-width: 600px)").matches,
 });
 container.after(mapControls.element);
