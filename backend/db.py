@@ -183,8 +183,18 @@ def county_exists(county_name: str, db_path: Path = DB_PATH) -> bool:
     return bool(_query("SELECT 1 FROM Station WHERE county_name = ? LIMIT 1", (county_name,), db_path))
 
 
-def get_county_history(county_name: str, since: str, db_path: Path = DB_PATH) -> list[dict]:
-    """County-level aggregates for each observation time at or after `since`."""
+def get_latest_observation_time(db_path: Path = DB_PATH) -> str | None:
+    """Newest observation_time stored in SQLite, or None if there is no data."""
+    rows = _query("SELECT MAX(observation_time) AS latest FROM WeatherObservation", db_path=db_path)
+    return rows[0]["latest"]
+
+
+def get_county_history(county_name: str, since: str, until: str, db_path: Path = DB_PATH) -> list[dict]:
+    """County-level aggregates per observation time in the window (since, until].
+
+    AVG/MIN/MAX ignore NULL measurements and yield NULL when every station's
+    value at that time point is NULL, so no value is invented.
+    """
     return _query(
         """
         SELECT w.observation_time,
@@ -194,13 +204,14 @@ def get_county_history(county_name: str, since: str, db_path: Path = DB_PATH) ->
                MIN(w.temperature) AS min_temperature,
                MAX(w.temperature) AS max_temperature,
                ROUND(AVG(w.humidity), 1) AS avg_humidity,
-               ROUND(AVG(w.wind_speed), 1) AS avg_wind_speed
+               ROUND(AVG(w.wind_speed), 1) AS avg_wind_speed,
+               ROUND(AVG(w.precipitation), 1) AS avg_precipitation
         FROM WeatherObservation w
         JOIN Station s ON s.station_id = w.station_id
-        WHERE s.county_name = ? AND w.observation_time >= ?
+        WHERE s.county_name = ? AND w.observation_time > ? AND w.observation_time <= ?
         GROUP BY w.observation_time
         ORDER BY w.observation_time
         """,
-        (county_name, since),
+        (county_name, since, until),
         db_path,
     )

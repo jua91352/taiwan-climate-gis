@@ -58,13 +58,19 @@ export interface CountyHistoryPoint {
   max_temperature: number | null;
   avg_humidity: number | null;
   avg_wind_speed: number | null;
+  avg_precipitation: number | null;
 }
 
+// The window is (since, until], where `until` is the newest observation stored
+// in SQLite (not the current clock). All three are null when SQLite is empty.
 export interface CountyHistoryResponse {
   source: string;
   county: string;
   days: number;
-  since: string;
+  latest_observation_time: string | null;
+  since: string | null;
+  until: string | null;
+  available_points: number;
   count: number;
   data: CountyHistoryPoint[];
 }

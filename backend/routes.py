@@ -1,5 +1,6 @@
 """Weather REST API. All data is read from SQLite; CWA is never called here."""
-from datetime import datetime, timedelta, timezone
+import math
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
@@ -8,7 +9,6 @@ from backend import db
 api = Blueprint("api", __name__, url_prefix="/api")
 
 DATA_SOURCE = "CWA O-A0003-001"
-TW_TZ = timezone(timedelta(hours=8))
 MIN_DAYS, MAX_DAYS, DEFAULT_DAYS = 1, 30, 7
 
 OBSERVATION_FIELDS = (
@@ -28,6 +28,11 @@ def normalize_county(name: str) -> str:
 
 def latest_time(rows: list[dict]) -> str | None:
     return max((r["observation_time"] for r in rows), default=None)
+
+
+def finite_row(row: dict) -> dict:
+    """Replace NaN/Infinity with None so responses are always valid JSON numbers."""
+    return {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in row.items()}
 
 
 def average(rows: list[dict], field: str) -> float | None:
@@ -83,13 +88,26 @@ def weather_history():
     if not db.county_exists(county):
         return error(f"County not found: {county_param}", 404)
 
-    since = (datetime.now(TW_TZ) - timedelta(days=days)).isoformat(timespec="seconds")
-    rows = db.get_county_history(county, since)
+    # The window ends at the newest observation in SQLite rather than the
+    # system clock, so `days=7` means "the 7 days of data leading up to the
+    # latest stored batch" even when ingestion has not run recently.
+    # Stored times share CWA's fixed +08:00 offset, so `since` is formatted
+    # the same way and compared as a string.
+    latest = db.get_latest_observation_time()
+    if latest is None:
+        since, rows = None, []
+    else:
+        since = (datetime.fromisoformat(latest) - timedelta(days=days)).isoformat(timespec="seconds")
+        rows = [finite_row(r) for r in db.get_county_history(county, since, latest)]
+
     return jsonify(
         source=DATA_SOURCE,
         county=county,
         days=days,
+        latest_observation_time=latest,
         since=since,
+        until=latest,
+        available_points=len(rows),
         count=len(rows),
         data=rows,
     )
