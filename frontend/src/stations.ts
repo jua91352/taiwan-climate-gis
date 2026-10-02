@@ -4,10 +4,10 @@ import type { StationObservation } from "./api";
 const STATION_PANE = "stations";
 const MISSING = "資料不足";
 
-// Keep auto-panned popups clear of the expanded layer control (top-right,
-// ~100 px wide), which Leaflet draws above popups.
+// Keep auto-panned popups clear of the floating header card (top-left) and the
+// expanded layer control (top-right, ~100 px wide), which are drawn above popups.
 const POPUP_OPTIONS: L.PopupOptions = {
-  autoPanPaddingTopLeft: L.point(10, 10),
+  autoPanPaddingTopLeft: L.point(10, 140),
   autoPanPaddingBottomRight: L.point(120, 10),
 };
 

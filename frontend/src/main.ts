@@ -9,18 +9,40 @@ import { createHistoryChart } from "./historyChart";
 import { createTemperatureLayer } from "./temperatureLayer";
 
 const container = document.getElementById("map");
+const detailsContainer = document.getElementById("county-details");
 const panelContainer = document.getElementById("county-weather");
 const historyContainer = document.getElementById("county-history");
-if (!container || !panelContainer || !historyContainer) {
-  throw new Error("Map container #map, #county-weather or #county-history not found");
+if (!container || !detailsContainer || !panelContainer || !historyContainer) {
+  throw new Error("Map container #map, #county-details, #county-weather or #county-history not found");
 }
 
 const { map, layersControl } = createMap(container);
 
-const countyWeather = createCountyWeatherPanel(panelContainer);
+// On narrow screens the panels open as a bottom sheet; lift Leaflet's
+// bottom-right controls (zoom, legend, attribution) to sit just above it.
+const narrowScreen = window.matchMedia("(max-width: 900px)");
+const updateSheetOffset = (): void => {
+  const offset = !detailsContainer.hidden && narrowScreen.matches ? detailsContainer.offsetHeight + 8 : 0;
+  container.style.setProperty("--sheet-offset", `${offset}px`);
+};
+new ResizeObserver(updateSheetOffset).observe(detailsContainer);
+narrowScreen.addEventListener("change", updateSheetOffset);
+
+// The weather + history panels float over the map only while a county is selected.
+const setDetailsOpen = (open: boolean): void => {
+  detailsContainer.hidden = !open;
+  updateSheetOffset();
+};
+const countyWeather = createCountyWeatherPanel(panelContainer, {
+  onClose: () => {
+    setDetailsOpen(false);
+    counties.clearSelection();
+  },
+});
 const historyChart = createHistoryChart(historyContainer);
 const counties = createCountyLayer(map, {
   onSelect: (name) => {
+    setDetailsOpen(true);
     void countyWeather.show(name);
     void historyChart.show(name);
   },

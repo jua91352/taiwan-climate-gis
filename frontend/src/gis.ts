@@ -82,6 +82,8 @@ function loadCounties(): FeatureCollection<Polygon | MultiPolygon, CountyPropert
 export interface CountyLayer {
   layer: L.GeoJSON;
   selectCounty(name: string): void;
+  /** Return the selected county to the default style; the map view is left as is. */
+  clearSelection(): void;
   getSelectedCounty(): string | null;
 }
 
@@ -134,9 +136,16 @@ export function createCountyLayer(map: L.Map, options: CountyLayerOptions = {}):
     },
   });
 
+  const clearSelection = (): void => {
+    const previous = selectedName;
+    selectedName = null;
+    if (previous) pathsByName.get(previous)?.setStyle(styleFor(previous, false));
+  };
+
   return {
     layer,
     selectCounty,
+    clearSelection,
     getSelectedCounty: () => selectedName,
   };
 }

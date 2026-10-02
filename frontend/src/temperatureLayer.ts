@@ -1,5 +1,6 @@
 import L from "leaflet";
-import type { StationObservation } from "./api";
+import { api, type StationObservation } from "./api";
+import { CITY_CENTERS } from "./gis";
 import { hasValidCoordinates } from "./stations";
 
 const TEMPERATURE_PANE = "temperature";
@@ -17,10 +18,21 @@ export const TEMPERATURE_BINS: readonly { min: number; color: string; label: str
   { min: 30, color: "#8e3600", label: "≥ 30" },
 ];
 
+// Station-level display from this zoom up; county averages below it. It is the
+// smallest CITY_CENTERS zoom, so every county click lands in station mode while
+// the whole-Taiwan view (zoom 7-8) shows one value per county.
+export const STATION_MODE_MIN_ZOOM = Math.min(...Object.values(CITY_CENTERS).map((c) => c.zoom));
+
+function binIndex(t: number): number {
+  let index = 0;
+  TEMPERATURE_BINS.forEach((bin, i) => {
+    if (t >= bin.min) index = i;
+  });
+  return index;
+}
+
 export function temperatureColor(t: number): string {
-  let color = TEMPERATURE_BINS[0].color;
-  for (const bin of TEMPERATURE_BINS) if (t >= bin.min) color = bin.color;
-  return color;
+  return TEMPERATURE_BINS[binIndex(t)].color;
 }
 
 /** A real measurement: finite and not a CWA sentinel (-99, -990, ...). */
@@ -35,7 +47,7 @@ function radiusForZoom(zoom: number): number {
 }
 
 function createLegend(): L.Control {
-  const legend = new L.Control({ position: "bottomleft" });
+  const legend = new L.Control({ position: "bottomright" });
   legend.onAdd = () => {
     const box = L.DomUtil.create("div", "temperature-legend");
     box.setAttribute("role", "img");
@@ -55,74 +67,119 @@ function createLegend(): L.Control {
   return legend;
 }
 
+/** Pill showing a county's average, colored by the same bins as the station circles. */
+function countyBadge(county: string, avg: number): L.DivIcon {
+  const pill = document.createElement("div");
+  pill.className = binIndex(avg) >= 3 ? "county-temp county-temp-dark" : "county-temp";
+  pill.style.background = temperatureColor(avg);
+  pill.textContent = `${avg.toFixed(1)}°`;
+  pill.title = `${county} 平均氣溫 ${avg}°C`;
+  return L.divIcon({ className: "county-temp-icon", html: pill, iconSize: undefined });
+}
+
 export interface TemperatureLayer {
   layer: L.LayerGroup;
-  /** Replace circles with the given stations' temperatures; returns how many were drawn. */
+  /** Replace the station-level circles; returns how many stations have a valid temperature. */
   render(stations: StationObservation[]): number;
 }
 
 export function createTemperatureLayer(map: L.Map): TemperatureLayer {
   // Above the station dots (450) so the temperature color is fully visible,
-  // below tooltips/popups. The circles are non-interactive, so clicks pass
-  // through: the circle center hits the station dot (popup), the ring hits
+  // below tooltips/popups. Everything here is non-interactive, so clicks pass
+  // through: a circle center hits the station dot (popup), anything else hits
   // the county polygon underneath.
   if (!map.getPane(TEMPERATURE_PANE)) {
     map.createPane(TEMPERATURE_PANE).style.zIndex = "460";
   }
   const layer = L.layerGroup();
+  const stationGroup = L.layerGroup();
+  const countyGroup = L.layerGroup();
   const legend = createLegend();
   let drawn = 0;
   let total = 0;
+  let countyState: "idle" | "loading" | "loaded" | "error" = "idle";
+  let countyCount = 0;
 
-  const updateLegendCount = (): void => {
+  const isStationMode = (): boolean => map.getZoom() >= STATION_MODE_MIN_ZOOM;
+
+  const updateLegendNote = (): void => {
     const note = legend.getContainer()?.querySelector<HTMLElement>("[data-role=count]");
-    if (note) note.textContent = drawn > 0 ? `${drawn} / ${total} 站有有效氣溫` : "目前沒有可用的氣溫資料";
-  };
-
-  // On narrow maps the attribution (bottom-right) can wrap and run under the
-  // legend (bottom-left). Raise the legend just enough to clear it, only when
-  // they actually collide; otherwise keep Leaflet's default position.
-  const clearAttribution = (): void => {
-    const box = legend.getContainer();
-    const attribution = map.getContainer().querySelector<HTMLElement>(".leaflet-control-attribution");
-    if (!box?.isConnected || !attribution) return;
-    box.style.marginBottom = "";
-    const l = box.getBoundingClientRect();
-    const a = attribution.getBoundingClientRect();
-    if (l.right > a.left && l.bottom > a.top) {
-      const base = parseFloat(getComputedStyle(box).marginBottom) || 0;
-      box.style.marginBottom = `${base + (l.bottom - a.top) + 4}px`;
+    if (!note) return;
+    if (isStationMode()) {
+      note.textContent = drawn > 0 ? `${drawn} / ${total} 站有有效氣溫` : "目前沒有可用的氣溫資料";
+    } else if (countyState === "loading" || countyState === "idle") {
+      note.textContent = "縣市平均氣溫載入中…";
+    } else {
+      note.textContent = countyCount > 0 ? `縣市平均氣溫（${countyCount} 縣市）` : "目前沒有可用的氣溫資料";
     }
   };
-  const scheduleClear = (): void => {
-    requestAnimationFrame(clearAttribution);
+
+  // Show exactly one of the two groups, depending on zoom.
+  const applyMode = (): void => {
+    const station = isStationMode();
+    if (station !== layer.hasLayer(stationGroup)) {
+      if (station) layer.addLayer(stationGroup);
+      else layer.removeLayer(stationGroup);
+    }
+    if (!station !== layer.hasLayer(countyGroup)) {
+      if (!station) layer.addLayer(countyGroup);
+      else layer.removeLayer(countyGroup);
+    }
+    updateLegendNote();
+  };
+
+  // County averages come from the existing /api/weather/county/<name>, so each
+  // badge equals the 平均氣溫 shown in that county's weather panel.
+  const loadCountyAverages = async (): Promise<void> => {
+    if (countyState === "loading" || countyState === "loaded") return;
+    countyState = "loading";
+    updateLegendNote();
+    const names = Object.keys(CITY_CENTERS);
+    const results = await Promise.allSettled(names.map((n) => api.countyWeather(n)));
+    countyGroup.clearLayers();
+    countyCount = 0;
+    results.forEach((result, i) => {
+      if (result.status !== "fulfilled") return;
+      const avg = result.value.summary.avg_temperature;
+      const center = CITY_CENTERS[names[i]];
+      if (avg === null || !Number.isFinite(avg) || !center) return;
+      L.marker([center.lat, center.lng], {
+        icon: countyBadge(names[i], avg),
+        pane: TEMPERATURE_PANE,
+        interactive: false,
+        keyboard: false,
+      }).addTo(countyGroup);
+      countyCount++;
+    });
+    countyState = results.some((r) => r.status === "fulfilled") ? "loaded" : "error";
+    updateLegendNote();
   };
 
   // The legend is shown only while the temperature layer is on.
   layer.on("add", () => {
     legend.addTo(map);
-    updateLegendCount();
-    scheduleClear();
+    applyMode();
+    void loadCountyAverages();
   });
   layer.on("remove", () => legend.remove());
-  map.on("baselayerchange resize", scheduleClear);
 
   map.on("zoomend", () => {
     const radius = radiusForZoom(map.getZoom());
-    layer.eachLayer((circle) => {
+    stationGroup.eachLayer((circle) => {
       if (circle instanceof L.CircleMarker) circle.setRadius(radius);
     });
+    if (map.hasLayer(layer)) applyMode();
   });
 
   const render = (stations: StationObservation[]): number => {
-    layer.clearLayers();
+    stationGroup.clearLayers();
     const radius = radiusForZoom(map.getZoom());
     drawn = 0;
     total = stations.length;
     for (const s of stations) {
       if (!hasValidCoordinates(s) || !hasValidTemperature(s)) continue;
       // Non-interactive: clicks reach the station dot / county polygon beneath;
-      // exact values are in that station's popup.
+      // full details are in that station's popup.
       L.circleMarker([s.latitude, s.longitude], {
         pane: TEMPERATURE_PANE,
         interactive: false,
@@ -131,10 +188,17 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
         weight: 1,
         fillColor: temperatureColor(s.temperature),
         fillOpacity: 0.85,
-      }).addTo(layer);
+      })
+        .bindTooltip(`${s.temperature.toFixed(1)}°`, {
+          permanent: true,
+          direction: "right",
+          offset: [8, 0],
+          className: "station-temp-label",
+        })
+        .addTo(stationGroup);
       drawn++;
     }
-    updateLegendCount();
+    updateLegendNote();
     return drawn;
   };
 

@@ -8,20 +8,38 @@ html,
 body {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
-  display: flex;
-  flex-direction: column;
   font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
   color: #1f2933;
   background: #f5f7fa;
 }
 
+/* Full-screen map; header and county panels float above it. */
+.app-main {
+  position: fixed;
+  inset: 0;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  z-index: 0; /* contain Leaflet's panes/controls so the floating cards stay on top */
+}
+
 .app-header {
-  padding: 12px 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #d9e2ec;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  max-width: min(380px, calc(100% - 24px - 124px)); /* leave room for the layer control */
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .app-header h1 {
@@ -40,27 +58,42 @@ body {
   color: #3e4c59;
 }
 
-.app-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  padding: 16px;
-}
-
+/* County weather + history float bottom-left, shown only while a county is selected.
+   Right side stays clear for the zoom / legend / attribution stack. */
 .county-details {
-  flex: none;
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 10;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr);
+  grid-template-columns: 320px minmax(320px, 520px);
   gap: 12px;
-  align-items: start;
+  align-items: end;
+  max-width: calc(100% - 24px - 190px);
+  max-height: calc(100% - 24px);
 }
 
+.county-details[hidden] {
+  display: none;
+}
+
+/* Narrow screens: stack as a bottom sheet that scrolls inside itself. main.ts
+   sets --sheet-offset so the bottom-right controls sit just above the sheet. */
 @media (max-width: 900px) {
   .county-details {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
     grid-template-columns: 1fr;
+    gap: 8px;
+    max-width: none;
+    max-height: 45%;
+    overflow-y: auto;
   }
+}
+
+.leaflet-bottom.leaflet-right {
+  bottom: var(--sheet-offset, 0px);
 }
 
 .history-panel {
@@ -69,6 +102,7 @@ body {
   background: #ffffff;
   border: 1px solid #d9e2ec;
   border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .history-header {
@@ -145,6 +179,31 @@ body {
   border: 1px solid #d9e2ec;
   border-left: 4px solid #c2410c;
   border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.county-panel-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: #52606d;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.county-panel-close:hover {
+  background: #f0f4f8;
+}
+
+.county-panel-close:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .county-panel[data-state="idle"] {
@@ -235,11 +294,15 @@ body {
   font-weight: 600;
 }
 
-#map {
-  flex: 1;
-  min-height: 360px;
-  border: 1px solid #d9e2ec;
-  border-radius: 8px;
+/* Chrome draws focus as a rectangle around an SVG element's bounding box, which
+   showed as a box around a clicked county. Drop that outline on map shapes and
+   mark keyboard focus with a thicker outline that follows the shape instead. */
+.leaflet-pane > svg path.leaflet-interactive:focus {
+  outline: none;
+}
+
+.leaflet-pane > svg path.leaflet-interactive:focus-visible {
+  stroke-width: 4.5px;
 }
 
 .station-popup {
@@ -295,6 +358,46 @@ body {
 .temperature-legend-note {
   margin-top: 4px;
   color: #52606d;
+}
+
+/* County average badge (whole-Taiwan temperature mode); centered on its point. */
+.county-temp-icon {
+  background: none;
+  border: 0;
+}
+
+.county-temp {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: #1f2933;
+  border: 1px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.county-temp-dark {
+  color: #ffffff;
+}
+
+/* Station temperature value next to each circle (zoomed-in mode). */
+.leaflet-tooltip.station-temp-label {
+  padding: 0 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #1f2933;
+  background: rgba(255, 255, 255, 0.9);
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.leaflet-tooltip.station-temp-label::before {
+  display: none;
 }
 
 .county-tooltip {

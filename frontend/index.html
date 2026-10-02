@@ -6,14 +6,14 @@
     <title>Taiwan Climate GIS Dashboard</title>
   </head>
   <body>
-    <header class="app-header">
-      <h1>Taiwan Climate GIS Dashboard</h1>
-      <p>CWA Open Data · GIS Weather Dashboard</p>
-      <p id="data-status" class="data-status">資料連線中…</p>
-    </header>
     <main class="app-main">
       <div id="map"></div>
-      <div class="county-details">
+      <header class="app-header">
+        <h1>Taiwan Climate GIS Dashboard</h1>
+        <p>CWA Open Data · GIS Weather Dashboard</p>
+        <p id="data-status" class="data-status">資料連線中…</p>
+      </header>
+      <div id="county-details" class="county-details" hidden>
         <section id="county-weather" class="county-panel" aria-live="polite"></section>
         <section id="county-history" class="history-panel" aria-live="polite"></section>
       </div>

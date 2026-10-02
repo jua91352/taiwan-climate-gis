@@ -61,7 +61,10 @@ export interface MapContext {
 }
 
 export function createMap(container: HTMLElement): MapContext {
-  const map = L.map(container).setView(TAIWAN_CENTER, TAIWAN_ZOOM);
+  // The header card floats over the top-left of the full-screen map, so the
+  // zoom buttons move to the bottom-right corner.
+  const map = L.map(container, { zoomControl: false }).setView(TAIWAN_CENTER, TAIWAN_ZOOM);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
 
   const baseLayers = createBaseLayers();
   baseLayers["標準地圖"].addTo(map);
@@ -75,9 +78,9 @@ export function createMap(container: HTMLElement): MapContext {
   controlBox?.querySelector(".leaflet-control-layers-overlays")?.setAttribute("role", "group");
   controlBox?.querySelector(".leaflet-control-layers-overlays")?.setAttribute("aria-label", "圖層");
 
-  // Leaflet only re-measures on window resize. The panels below the map change
-  // height as county data loads, so re-measure whenever the container resizes;
-  // invalidateSize() keeps the current center (e.g. a CITY_CENTERS view).
+  // Leaflet only re-measures on window resize. Re-measure whenever the map
+  // container itself resizes too; invalidateSize() keeps the current center
+  // (e.g. a CITY_CENTERS view).
   new ResizeObserver(() => map.invalidateSize()).observe(container);
 
   return { map, layersControl };

@@ -64,7 +64,12 @@ export interface CountyWeatherPanel {
   getState(): CountyWeatherState;
 }
 
-export function createCountyWeatherPanel(container: HTMLElement): CountyWeatherPanel {
+export interface CountyWeatherPanelOptions {
+  /** If set, a close button is shown that calls this (e.g. to clear the selection). */
+  onClose?: () => void;
+}
+
+export function createCountyWeatherPanel(container: HTMLElement, options: CountyWeatherPanelOptions = {}): CountyWeatherPanel {
   let state: CountyWeatherState = { kind: "idle" };
   let requestId = 0;
   let controller: AbortController | null = null;
@@ -75,6 +80,17 @@ export function createCountyWeatherPanel(container: HTMLElement): CountyWeatherP
 
     const header = el("div", "county-panel-header");
     header.append(el("h2", undefined, state.kind === "idle" ? "縣市目前天氣" : state.county));
+    if (state.kind === "loaded") {
+      header.append(el("span", "county-panel-time", `最新觀測：${formatObservationTime(state.data.latest_observation_time)}`));
+    }
+    if (options.onClose) {
+      const close = el("button", "county-panel-close", "×");
+      close.type = "button";
+      close.setAttribute("aria-label", "關閉縣市資訊");
+      close.title = "關閉";
+      close.addEventListener("click", options.onClose);
+      header.append(close);
+    }
 
     if (state.kind !== "loaded") {
       container.replaceChildren(header, el("p", `county-panel-message ${state.kind}`, MESSAGES[state.kind]));
@@ -82,7 +98,6 @@ export function createCountyWeatherPanel(container: HTMLElement): CountyWeatherP
     }
 
     const { data } = state;
-    header.append(el("span", "county-panel-time", `最新觀測：${formatObservationTime(data.latest_observation_time)}`));
     const stats = el("div", "county-stats");
     stats.append(
       stat("測站數", `${data.station_count} 站`),
