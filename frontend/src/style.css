@@ -391,8 +391,9 @@ body {
   color: #ffffff;
 }
 
-/* Station temperature value (zoomed-in mode): plain text centered on the
-   station, with a thin white halo so it reads over the heatmap. */
+/* Station temperature value (zoomed-in mode): small box in the value's own
+   heatmap color, centered on the station; a thin white ring separates it from
+   the similarly colored surface underneath. */
 .station-temp-icon {
   background: none;
   border: 0;
@@ -401,12 +402,18 @@ body {
 .station-temp-label {
   position: absolute;
   transform: translate(-50%, -50%);
+  padding: 2px 4px;
   font-size: 0.6875rem;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   color: #1f2933;
-  text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 3px #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+}
+
+.station-temp-label-light {
+  color: #ffffff;
 }
 
 .county-tooltip {

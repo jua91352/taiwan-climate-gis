@@ -62,8 +62,8 @@ export function temperatureRgb(t: number): RgbColor {
 }
 
 /** White text on the dark ends of the ramp (blue, red), dark text elsewhere. */
-function needsLightText(hex: string): boolean {
-  const [r, g, b] = hexToRgb(hex).map((c) => {
+function needsLightText(rgb: RgbColor): boolean {
+  const [r, g, b] = rgb.map((c) => {
     const v = c / 255;
     return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
   });
@@ -110,7 +110,7 @@ function createLegend(): L.Control {
 /** Pill showing a county's average, colored by its temperature bin. */
 function countyBadge(county: string, avg: number): L.DivIcon {
   const pill = document.createElement("div");
-  pill.className = needsLightText(temperatureColor(avg)) ? "county-temp county-temp-dark" : "county-temp";
+  pill.className = needsLightText(hexToRgb(temperatureColor(avg))) ? "county-temp county-temp-dark" : "county-temp";
   pill.style.background = temperatureColor(avg);
   pill.textContent = `${avg.toFixed(1)}°`;
   pill.title = `${county} 平均氣溫 ${avg}°C`;
@@ -217,10 +217,13 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
     for (const s of stations) {
       if (!hasValidCoordinates(s) || !hasValidTemperature(s)) continue;
       samples.push({ lat: s.latitude, lng: s.longitude, temperature: s.temperature });
-      // Just the number, centered on the station; the heatmap carries the color.
-      // Non-interactive: clicks reach the station dot / county polygon beneath.
+      // Number in a small box filled with this exact temperature's heatmap
+      // color, centered on the station. Non-interactive: clicks reach the
+      // station dot / county polygon beneath.
+      const rgb = temperatureRgb(s.temperature);
       const label = document.createElement("span");
-      label.className = "station-temp-label";
+      label.className = needsLightText(rgb) ? "station-temp-label station-temp-label-light" : "station-temp-label";
+      label.style.background = `rgb(${rgb.join(", ")})`;
       label.textContent = `${s.temperature.toFixed(1)}°`;
       L.marker([s.latitude, s.longitude], {
         icon: L.divIcon({ className: "station-temp-icon", html: label, iconSize: undefined }),
