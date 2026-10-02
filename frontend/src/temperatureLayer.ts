@@ -2,20 +2,22 @@ import L from "leaflet";
 import { api, type StationObservation } from "./api";
 import { CITY_CENTERS } from "./gis";
 import { hasValidCoordinates } from "./stations";
+import { createTemperatureHeatmap, type RgbColor, type TemperatureSample } from "./temperatureHeatmap";
 
 const TEMPERATURE_PANE = "temperature";
 
-// One-hue (orange) ordinal ramp, light -> dark = cool -> hot, in fixed 5 °C bins.
-// Validated with the dataviz palette checker (--ordinal) against light #fcfcfb
-// and dark #1a1a19 surfaces: monotone lightness, adjacent ΔL >= 0.06, end-step
-// contrast >= 2:1. Fixed bins keep colors comparable across observation times.
+// Cool -> warm ramp (blue, cyan, green, yellow, orange, red) in fixed 5 °C bins,
+// shared by the legend, county badges, station circles and the heatmap.
+// Checked with the dataviz palette validator: lightness band, chroma floor and
+// adjacent normal-vision ΔE >= 15 pass; the CVD/contrast warnings are relieved
+// by the numeric labels. Fixed bins keep colors comparable across times.
 export const TEMPERATURE_BINS: readonly { min: number; color: string; label: string }[] = [
-  { min: Number.NEGATIVE_INFINITY, color: "#efa077", label: "< 10" },
-  { min: 10, color: "#e28755", label: "10 – 15" },
-  { min: 15, color: "#d56d2f", label: "15 – 20" },
-  { min: 20, color: "#c25500", label: "20 – 25" },
-  { min: 25, color: "#a94500", label: "25 – 30" },
-  { min: 30, color: "#8e3600", label: "≥ 30" },
+  { min: Number.NEGATIVE_INFINITY, color: "#3463c9", label: "< 10" },
+  { min: 10, color: "#1e9ec2", label: "10 – 15" },
+  { min: 15, color: "#41a85a", label: "15 – 20" },
+  { min: 20, color: "#c2b51c", label: "20 – 25" },
+  { min: 25, color: "#ec6f1f", label: "25 – 30" },
+  { min: 30, color: "#b8232b", label: "≥ 30" },
 ];
 
 // Station-level display from this zoom up; county averages below it. It is the
@@ -33,6 +35,39 @@ function binIndex(t: number): number {
 
 export function temperatureColor(t: number): string {
   return TEMPERATURE_BINS[binIndex(t)].color;
+}
+
+function hexToRgb(hex: string): RgbColor {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// Continuous version for the heatmap: each bin color sits at its bin's middle
+// (7.5, 12.5, … 32.5 °C) and colors blend linearly in between, so the surface
+// is smooth yet matches the legend swatch at every bin center.
+const RAMP_STOPS = TEMPERATURE_BINS.map((bin, i) => ({ t: 7.5 + i * 5, rgb: hexToRgb(bin.color) }));
+
+export function temperatureRgb(t: number): RgbColor {
+  if (t <= RAMP_STOPS[0].t) return RAMP_STOPS[0].rgb;
+  for (let i = 1; i < RAMP_STOPS.length; i++) {
+    const hi = RAMP_STOPS[i];
+    if (t <= hi.t) {
+      const lo = RAMP_STOPS[i - 1];
+      const f = (t - lo.t) / (hi.t - lo.t);
+      const mix = (c: 0 | 1 | 2): number => Math.round(lo.rgb[c] + (hi.rgb[c] - lo.rgb[c]) * f);
+      return [mix(0), mix(1), mix(2)];
+    }
+  }
+  return RAMP_STOPS[RAMP_STOPS.length - 1].rgb;
+}
+
+/** White text on the dark ends of the ramp (blue, red), dark text elsewhere. */
+function needsLightText(hex: string): boolean {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.18;
 }
 
 /** A real measurement: finite and not a CWA sentinel (-99, -990, ...). */
@@ -70,7 +105,7 @@ function createLegend(): L.Control {
 /** Pill showing a county's average, colored by the same bins as the station circles. */
 function countyBadge(county: string, avg: number): L.DivIcon {
   const pill = document.createElement("div");
-  pill.className = binIndex(avg) >= 3 ? "county-temp county-temp-dark" : "county-temp";
+  pill.className = needsLightText(temperatureColor(avg)) ? "county-temp county-temp-dark" : "county-temp";
   pill.style.background = temperatureColor(avg);
   pill.textContent = `${avg.toFixed(1)}°`;
   pill.title = `${county} 平均氣溫 ${avg}°C`;
@@ -95,6 +130,9 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
   const stationGroup = L.layerGroup();
   const countyGroup = L.layerGroup();
   const legend = createLegend();
+  // Continuous surface under the circles/badges; part of the 氣溫 layer itself.
+  const heatmap = createTemperatureHeatmap(map, temperatureRgb);
+  layer.addLayer(heatmap.layer);
   let drawn = 0;
   let total = 0;
   let countyState: "idle" | "loading" | "loaded" | "error" = "idle";
@@ -176,8 +214,10 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
     const radius = radiusForZoom(map.getZoom());
     drawn = 0;
     total = stations.length;
+    const samples: TemperatureSample[] = [];
     for (const s of stations) {
       if (!hasValidCoordinates(s) || !hasValidTemperature(s)) continue;
+      samples.push({ lat: s.latitude, lng: s.longitude, temperature: s.temperature });
       // Non-interactive: clicks reach the station dot / county polygon beneath;
       // full details are in that station's popup.
       L.circleMarker([s.latitude, s.longitude], {
@@ -198,6 +238,7 @@ export function createTemperatureLayer(map: L.Map): TemperatureLayer {
         .addTo(stationGroup);
       drawn++;
     }
+    heatmap.update(samples);
     updateLegendNote();
     return drawn;
   };
