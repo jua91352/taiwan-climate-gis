@@ -85,7 +85,12 @@ export interface CountyLayer {
   getSelectedCounty(): string | null;
 }
 
-export function createCountyLayer(map: L.Map): CountyLayer {
+export interface CountyLayerOptions {
+  /** Called after a county is selected and the map has moved to it. */
+  onSelect?: (name: string) => void;
+}
+
+export function createCountyLayer(map: L.Map, options: CountyLayerOptions = {}): CountyLayer {
   const pathsByName = new Map<string, L.Path>();
   let selectedName: string | null = null;
 
@@ -110,6 +115,7 @@ export function createCountyLayer(map: L.Map): CountyLayer {
     if (center) {
       map.setView([center.lat, center.lng], center.zoom);
     }
+    options.onSelect?.(name);
   };
 
   const layer = L.geoJSON<CountyProperties, Polygon | MultiPolygon>(loadCounties(), {

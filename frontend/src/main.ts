@@ -4,15 +4,20 @@ import { createMap } from "./map";
 import { createCountyLayer } from "./gis";
 import { api } from "./api";
 import { createStationLayer, formatObservationTime, renderStations } from "./stations";
+import { createCountyWeatherPanel } from "./countyWeather";
 
 const container = document.getElementById("map");
-if (!container) {
-  throw new Error("Map container #map not found");
+const panelContainer = document.getElementById("county-weather");
+if (!container || !panelContainer) {
+  throw new Error("Map container #map or #county-weather not found");
 }
 
 const { map, layersControl } = createMap(container);
 
-const counties = createCountyLayer(map);
+const countyWeather = createCountyWeatherPanel(panelContainer);
+const counties = createCountyLayer(map, {
+  onSelect: (name) => void countyWeather.show(name),
+});
 counties.layer.addTo(map);
 layersControl.addOverlay(counties.layer, "縣市邊界");
 

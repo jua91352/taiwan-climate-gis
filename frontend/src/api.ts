@@ -90,8 +90,8 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { headers: { Accept: "application/json" }, signal });
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try {
@@ -108,8 +108,8 @@ async function getJson<T>(path: string): Promise<T> {
 export const api = {
   health: () => getJson<HealthResponse>("/api/health"),
   latestWeather: () => getJson<LatestWeatherResponse>("/api/weather/latest"),
-  countyWeather: (county: string) =>
-    getJson<CountyWeatherResponse>(`/api/weather/county/${encodeURIComponent(county)}`),
+  countyWeather: (county: string, signal?: AbortSignal) =>
+    getJson<CountyWeatherResponse>(`/api/weather/county/${encodeURIComponent(county)}`, signal),
   countyHistory: (county: string, days: number) =>
     getJson<CountyHistoryResponse>(
       `/api/weather/history?${new URLSearchParams({ county, days: String(days) })}`,

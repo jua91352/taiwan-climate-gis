@@ -21,7 +21,7 @@ export function formatObservationTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? MISSING : date.toLocaleString("zh-TW", { hour12: false });
 }
 
-function formatValue(value: number | null, unit: string, separator = " "): string {
+export function formatValue(value: number | null, unit: string, separator = " "): string {
   return value === null || !Number.isFinite(value) ? MISSING : `${value}${separator}${unit}`;
 }
 
