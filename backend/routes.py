@@ -6,6 +6,7 @@ O-A0003-001 first when it is 10+ minutes old (backend.weather_refresh).
 import math
 from datetime import datetime, timedelta
 from functools import wraps
+from urllib.parse import unquote
 
 from flask import Blueprint, abort, g, jsonify, request, send_from_directory, url_for
 
@@ -77,7 +78,9 @@ def weather_latest():
 @api.get("/weather/county/<county_name>")
 @fresh_observations
 def weather_county(county_name: str):
-    county = normalize_county(county_name)
+    # Vercel's Python runtime passes the path without percent-decoding it
+    # (高雄市 arrives as %E9%AB%98...); a decoded name is left unchanged.
+    county = normalize_county(unquote(county_name))
     if not db.county_exists(county):
         return error(f"County not found: {county_name}", 404)
 

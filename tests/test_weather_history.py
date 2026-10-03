@@ -214,5 +214,68 @@ class WindowAndCountyTests(HistoryTestCase):
         self.assertEqual((yilan[0]["station_count"], yilan[0]["avg_temperature"]), (1, 30.0))
 
 
+class CountyPathTests(HistoryTestCase):
+    """/api/weather/county/<name> with a non-ASCII county in the path.
+
+    Werkzeug's dev server percent-decodes PATH_INFO, but Vercel's Python
+    runtime passes the raw request path (e.g. %E9%AB%98...) through unchanged.
+    """
+    ENCODED_PATH = "/api/weather/county/%E9%AB%98%E9%9B%84%E5%B8%82"  # 高雄市
+
+    def county(self, path_info: str):
+        """GET with PATH_INFO set exactly as given, against this test's database, CWA never called."""
+        status = RefreshStatus(updated=False, stale=False, error=None, latest_observation_time=None)
+        patches = [
+            mock.patch.object(routes, "ensure_fresh", lambda *a, **k: status),
+            mock.patch.object(cwa_api, "fetch_dataset", side_effect=AssertionError("county must not call CWA")),
+            mock.patch.object(db, "county_exists", partial(db.county_exists, db_path=self.db_path)),
+            mock.patch.object(db, "get_latest_observations_by_county",
+                              partial(db.get_latest_observations_by_county, db_path=self.db_path)),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            from backend.app import create_app
+            # The test client would decode a path itself, so PATH_INFO is overridden directly.
+            return create_app().test_client().get("/", environ_overrides={"PATH_INFO": path_info})
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
+    def setUp(self):
+        super().setUp()
+        self.save(raw_station("K1", "高雄市", LATEST, AirTemperature="30.0"),
+                  raw_station("K2", "高雄市", LATEST, AirTemperature="28.0"),
+                  raw_station("A1", "臺北市", LATEST, AirTemperature="20.0"))
+
+    def assert_kaohsiung(self, response):
+        self.assertEqual(response.status_code, 200, response.get_json())
+        body = response.get_json()
+        self.assertEqual(body["county"], "高雄市")
+        self.assertEqual(body["station_count"], 2)
+        self.assertEqual({r["station_id"] for r in body["data"]}, {"K1", "K2"})
+        self.assertEqual(body["summary"]["avg_temperature"], 29.0)
+
+    def test_raw_percent_encoded_path_as_on_vercel(self):
+        self.assert_kaohsiung(self.county(self.ENCODED_PATH))
+
+    def test_decoded_path_as_on_werkzeug_dev_server(self):
+        # PEP 3333: the decoded UTF-8 bytes carried in a latin-1 str.
+        self.assert_kaohsiung(self.county("/api/weather/county/" + "高雄市".encode().decode("latin-1")))
+
+    def test_test_client_path_still_works(self):
+        from backend.app import create_app
+        with mock.patch.object(routes, "ensure_fresh"), \
+                mock.patch.object(db, "county_exists", partial(db.county_exists, db_path=self.db_path)), \
+                mock.patch.object(db, "get_latest_observations_by_county",
+                                  partial(db.get_latest_observations_by_county, db_path=self.db_path)):
+            self.assert_kaohsiung(create_app().test_client().get("/api/weather/county/高雄市"))
+
+    def test_unknown_encoded_county_is_still_404(self):
+        response = self.county("/api/weather/county/%E7%81%AB%E6%98%9F%E5%B8%82")  # 火星市
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(response.get_json()["error"].startswith("County not found: "))
+
+
 if __name__ == "__main__":
     unittest.main()
