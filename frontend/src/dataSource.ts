@@ -14,7 +14,7 @@ const CWA = "中央氣象署";
 export const MAIN_LAYER_SOURCES: Record<MainLayerId, LayerSource | null> = {
   temperature: { provider: CWA, dataset: "O-A0003-001", description: "氣溫" },
   rainfall: { provider: CWA, dataset: "O-A0002-001", description: "過去 1 小時雨量" },
-  radar: null,
+  radar: { provider: CWA, dataset: "O-A0058-005", description: "雷達整合回波" },
   typhoon: null,
   wind: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：風速／風向" },
   humidity: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：相對濕度" },

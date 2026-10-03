@@ -26,6 +26,20 @@ CREATE TABLE IF NOT EXISTS WeatherObservation (
     weather TEXT,
     FOREIGN KEY (station_id) REFERENCES Station(station_id)
 );
+
+-- "Latest observation per station" looks up MAX(observation_time) per station
+-- for every row; without this index that is a full scan per row and grows
+-- quadratically with history. Created on existing databases by init_db().
+CREATE INDEX IF NOT EXISTS idx_observation_station_time
+    ON WeatherObservation (station_id, observation_time);
+
+-- Radar frames: metadata only, the PNG lives on disk (file_path is relative
+-- to the data directory).
+CREATE TABLE IF NOT EXISTS RadarFrame (
+    timestamp TEXT PRIMARY KEY,
+    file_path TEXT NOT NULL,
+    source TEXT NOT NULL
+);
 """
 
 # Columns added after the first release, applied to existing databases by
@@ -231,3 +245,40 @@ def get_county_history(county_name: str, since: str, until: str, db_path: Path =
         (county_name, since, until),
         db_path,
     )
+
+
+# ---------------------------------------------------------------------------
+# Radar frame metadata. timestamp is CWA's ISO 8601 time with its fixed +08:00
+# offset, so string comparison orders it chronologically.
+# ---------------------------------------------------------------------------
+
+def radar_frame_exists(timestamp: str, db_path: Path = DB_PATH) -> bool:
+    return bool(_query("SELECT 1 FROM RadarFrame WHERE timestamp = ?", (timestamp,), db_path))
+
+
+def insert_radar_frame(timestamp: str, file_path: str, source: str, db_path: Path = DB_PATH) -> bool:
+    """Store one frame's metadata; False if that timestamp is already stored."""
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO RadarFrame (timestamp, file_path, source) VALUES (?, ?, ?)",
+                (timestamp, file_path, source),
+            )
+            return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def get_radar_frames(db_path: Path = DB_PATH) -> list[dict]:
+    """All stored frames, oldest first."""
+    return _query("SELECT timestamp, file_path, source FROM RadarFrame ORDER BY timestamp", db_path=db_path)
+
+
+def delete_radar_frames(timestamps: list[str], db_path: Path = DB_PATH) -> None:
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.executemany("DELETE FROM RadarFrame WHERE timestamp = ?", [(t,) for t in timestamps])
+    finally:
+        conn.close()

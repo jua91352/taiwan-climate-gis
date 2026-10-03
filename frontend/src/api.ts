@@ -1,5 +1,6 @@
 // Typed client for the Flask REST API. Weather data comes from the backend's
-// SQLite database; rainfall is fetched from CWA by the backend (live, cached).
+// SQLite database; rainfall is fetched from CWA by the backend (live, cached);
+// radar frames are collected and reprojected by the backend.
 // The frontend never calls CWA directly.
 
 export interface Station {
@@ -119,6 +120,27 @@ export interface RainfallLatestResponse {
   data: RainfallStation[];
 }
 
+// One stored CWA O-A0058-005 radar frame. image_url is an API path to the PNG,
+// already reprojected to Web Mercator by the backend.
+export interface RadarFrame {
+  timestamp: string;
+  image_url: string;
+  source: string;
+}
+
+// Frames of the last 2 hours, oldest first; empty when none has been collected.
+export interface RadarHistoryResponse {
+  source: string;
+  projection: string;
+  /** Leaflet ImageOverlay bounds: [[south, west], [north, east]]. */
+  bounds: [[number, number], [number, number]];
+  latest_timestamp: string | null;
+  count: number;
+  frames: RadarFrame[];
+  /** Why the backend could not collect a newer frame (null when fine). */
+  refresh_error: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -158,4 +180,5 @@ export const api = {
   stationWeather: (stationId: string) =>
     getJson<StationWeatherResponse>(`/api/weather/station/${encodeURIComponent(stationId)}`),
   rainfallLatest: () => getJson<RainfallLatestResponse>("/api/rainfall/latest"),
+  radarHistory: () => getJson<RadarHistoryResponse>("/api/radar/history"),
 };

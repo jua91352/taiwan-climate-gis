@@ -367,6 +367,59 @@ body {
   color: #52606d;
 }
 
+.map-legend-unit {
+  margin-left: 6px;
+  font-weight: 400;
+}
+
+/* 雷達 dBZ legend: dark card like the map controls / 時間軸, all 15 ticks. */
+.map-legend.radar-legend {
+  width: 268px;
+  padding: 8px 12px 6px;
+  color: var(--mc-text);
+  background: rgba(29, 36, 51, 0.88);
+  border: 1px solid var(--mc-line);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(10, 14, 24, 0.35);
+}
+
+.radar-legend .map-legend-unit,
+.radar-legend .map-legend-ticks {
+  color: var(--mc-muted);
+}
+
+.radar-legend .map-legend-bar {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.radar-legend .map-legend-ticks {
+  font-size: 0.625rem;
+}
+
+.radar-legend .map-legend-note {
+  color: var(--mc-dim);
+  font-size: 0.625rem;
+}
+
+/* Phones: the 時間軸 card spans the width, so lift the bottom-right corner
+   (legend + zoom) above the card while it is shown. */
+@media (max-width: 700px) {
+  .leaflet-bottom.leaflet-right {
+    bottom: calc(var(--sheet-offset, 0px) + var(--timeline-offset, 0px));
+  }
+}
+
+@media (max-width: 600px) {
+  .map-legend.radar-legend {
+    width: 220px;
+    padding: 6px 10px 5px;
+  }
+
+  .radar-legend .map-legend-ticks {
+    font-size: 0.5625rem;
+  }
+}
+
 /* County average badge (whole-Taiwan temperature mode); centered on its point. */
 .county-temp-icon {
   background: none;
@@ -434,7 +487,10 @@ body {
 }
 
 /* Right-side map controls panel (mapControls.ts). Dark, compact, one warm accent. */
-.map-controls {
+/* Shared by the map controls panel and the 雷達時間軸 card. */
+.map-controls,
+.radar-timeline,
+.radar-legend {
   --mc-bg: #1d2433;
   --mc-card: #283044;
   --mc-card-hover: #323c54;
@@ -446,7 +502,9 @@ body {
   --mc-accent-soft: rgba(255, 178, 107, 0.16);
   --mc-accent-text: #ffd9b5;
   --mc-focus: #8ccaff;
+}
 
+.map-controls {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -1030,5 +1088,269 @@ body {
 
   .map-controls {
     width: min(256px, calc(100% - 24px));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   雷達時間軸: bottom-centre card, shown while the 雷達 layer is on. Sits above
+   the county panels when they are open (main.ts sets --details-offset).
+   --------------------------------------------------------------------------- */
+.radar-timeline {
+  position: absolute;
+  left: 50%;
+  bottom: calc(24px + var(--details-offset, 0px));
+  z-index: 10;
+  width: min(640px, calc(100% - 24px));
+  padding: 10px 12px 8px;
+  color: var(--mc-text);
+  font-size: 0.8125rem;
+  background: var(--mc-bg);
+  border: 1px solid var(--mc-line);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(10, 14, 24, 0.35);
+  transform: translateX(-50%);
+}
+
+.radar-timeline[hidden],
+.radar-timeline [hidden] {
+  display: none;
+}
+
+.rt-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rt-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.rt-current {
+  margin: 0 0 0 auto;
+  color: var(--mc-muted);
+  white-space: nowrap;
+}
+
+.rt-current-time {
+  color: var(--mc-accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-state {
+  margin-left: 6px;
+  color: var(--mc-dim);
+}
+
+.rt-state.is-error,
+.rt-message.is-error {
+  color: #ff9d9d;
+}
+
+.rt-message {
+  margin: 8px 0 2px;
+  color: var(--mc-muted);
+}
+
+.rt-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.rt-step {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--mc-text);
+  background: var(--mc-card);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rt-step svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rt-play {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px 0 7px;
+  color: var(--mc-accent-text);
+  font: inherit;
+  font-size: 0.75rem;
+  background: var(--mc-accent-soft);
+  border: 1px solid var(--mc-accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rt-play:hover:not(:disabled) {
+  background: rgba(255, 178, 107, 0.24);
+}
+
+.rt-play:disabled {
+  color: var(--mc-dim);
+  background: transparent;
+  border-color: var(--mc-line);
+  cursor: default;
+}
+
+.rt-play svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.rt-step:hover:not(:disabled) {
+  background: var(--mc-card-hover);
+}
+
+.rt-step:disabled {
+  color: var(--mc-dim);
+  background: transparent;
+  border-color: var(--mc-line);
+  cursor: default;
+}
+
+.rt-axis {
+  flex: 1;
+  min-width: 0;
+  padding: 0 18px; /* room for the end ticks' labels */
+}
+
+.rt-ends {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 -18px;
+  color: var(--mc-dim);
+  font-size: 0.6875rem;
+}
+
+.rt-track {
+  position: relative;
+  height: 38px;
+}
+
+.rt-line {
+  position: absolute;
+  top: 11px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--mc-line);
+  border-radius: 1px;
+}
+
+.rt-tick {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 36px;
+  padding: 6px 0 0;
+  color: var(--mc-muted);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.rt-dot {
+  width: 12px;
+  height: 12px;
+  background: var(--mc-card-hover);
+  border: 2px solid var(--mc-muted);
+  border-radius: 50%;
+}
+
+.rt-tick:hover {
+  color: var(--mc-text);
+}
+
+.rt-tick:hover .rt-dot {
+  border-color: var(--mc-text);
+}
+
+.rt-tick[aria-checked="true"] {
+  color: var(--mc-accent-text);
+  font-weight: 600;
+}
+
+.rt-tick[aria-checked="true"] .rt-dot {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  box-shadow: 0 0 0 3px var(--mc-accent-soft);
+}
+
+.rt-step:focus-visible,
+.rt-play:focus-visible,
+.rt-tick:focus-visible {
+  outline: 2px solid var(--mc-focus);
+  outline-offset: 2px;
+}
+
+/* 701–1199px: a centred card would run under the right-hand column (map
+   controls, legend, zoom), e.g. when a county panel lifts it, hiding 播放.
+   Keep the card left of that column instead, and give the dBZ legend the
+   same 200px width as the other legends, which the county panels leave room for. */
+@media (min-width: 701px) and (max-width: 1199px) {
+  .radar-timeline {
+    left: 12px;
+    right: 280px;
+    width: auto;
+    transform: none;
+  }
+
+  .map-legend.radar-legend {
+    width: 200px;
+    padding: 6px 10px 5px;
+  }
+
+  .radar-legend .map-legend-ticks {
+    font-size: 0.5625rem;
+  }
+}
+
+/* Narrow screens: up to 13 ticks do not leave room for every time label; keep
+   the selected one (the header line above also shows it). Stay clear of the
+   zoom buttons on the right. */
+@media (max-width: 700px) {
+  .radar-timeline {
+    left: 8px;
+    right: 56px;
+    width: auto;
+    transform: none;
+  }
+
+  .rt-tick:not([aria-checked="true"]) .rt-label {
+    visibility: hidden;
+  }
+
+  .rt-head {
+    flex-wrap: wrap;
+    gap: 2px 12px;
   }
 }

@@ -132,6 +132,21 @@ export function createCountyLayer(map: L.Map, options: CountyLayerOptions = {}):
         mouseover: () => featureLayer.setStyle(styleFor(name, true)),
         mouseout: () => featureLayer.setStyle(styleFor(name, false)),
         click: () => selectCounty(name),
+        // The shapes are already in the Tab order with a focus outline (style.css);
+        // name them and let Enter / Space select them like a click. The SVG
+        // element is recreated whenever the layer is re-added, so set up on add.
+        add: () => {
+          const element = featureLayer.getElement();
+          if (!element) return;
+          element.setAttribute("role", "button");
+          element.setAttribute("aria-label", name);
+          element.addEventListener("keydown", (event) => {
+            const { key } = event as KeyboardEvent;
+            if (key !== "Enter" && key !== " ") return;
+            event.preventDefault();
+            selectCounty(name);
+          });
+        },
       });
     },
   });

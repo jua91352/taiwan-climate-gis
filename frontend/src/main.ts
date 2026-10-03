@@ -14,6 +14,8 @@ import { createSourceStatus, type MainLayerId } from "./dataSource";
 import { createWindLayer } from "./windLayer";
 import { createHumidityLayer } from "./humidityHeatmap";
 import { createWeatherLayer } from "./weatherLayer";
+import { createRadarLayer } from "./radarLayer";
+import { attachRadarLegend } from "./radarLegend";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -27,10 +29,12 @@ const { map, baseMaps } = createMap(container);
 
 // On narrow screens the panels open as a bottom sheet; lift Leaflet's
 // bottom-right controls (zoom, legend, attribution) to sit just above it.
+// The 雷達時間軸 sits above the open panels on every screen width.
 const narrowScreen = window.matchMedia("(max-width: 900px)");
 const updateSheetOffset = (): void => {
-  const offset = !detailsContainer.hidden && narrowScreen.matches ? detailsContainer.offsetHeight + 8 : 0;
-  container.style.setProperty("--sheet-offset", `${offset}px`);
+  const height = detailsContainer.hidden ? 0 : detailsContainer.offsetHeight + 8;
+  container.style.setProperty("--sheet-offset", `${narrowScreen.matches ? height : 0}px`);
+  container.parentElement?.style.setProperty("--details-offset", `${height}px`);
 };
 new ResizeObserver(updateSheetOffset).observe(detailsContainer);
 narrowScreen.addEventListener("change", updateSheetOffset);
@@ -81,6 +85,18 @@ const weather = createWeatherLayer(map);
 // 雨量: past-1-hour rainfall surface from /api/rainfall/latest, off by default.
 const rainfall = createRainfallLayer(map, (detail) => sourceStatus.setDetail("rainfall", detail));
 
+// 雷達: CWA O-A0058-005 radar frames from /api/radar/history, off by default.
+// Its 時間軸 card floats over the bottom of the map while the layer is on.
+const radar = createRadarLayer(map, (detail) => sourceStatus.setDetail("radar", detail));
+container.after(radar.timeline);
+attachRadarLegend(map, radar.layer);
+// Where the 時間軸 card and the bottom-right legend could meet (see style.css),
+// the bottom-right controls sit above the card while it is shown.
+new ResizeObserver(() => {
+  const height = radar.timeline.hidden ? 0 : radar.timeline.offsetHeight + 32;
+  container.style.setProperty("--timeline-offset", `${height}px`);
+}).observe(radar.timeline);
+
 // 氣溫數字標籤: show/hide the numbers drawn by the temperature layer (CSS only).
 const temperatureLabels: Toggle = {
   isOn: () => !container.classList.contains("temp-labels-hidden"),
@@ -98,7 +114,7 @@ const mapControls = createMapControls(map, {
   layers: [
     { id: mainLayer("temperature"), label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
     { id: mainLayer("rainfall"), label: "雨量", icon: "rain", toggle: layerToggle(map, rainfall.layer) },
-    { id: mainLayer("radar"), label: "雷達", icon: "radar" },
+    { id: mainLayer("radar"), label: "雷達", icon: "radar", toggle: layerToggle(map, radar.layer) },
     { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon" },
     { id: mainLayer("wind"), label: "風速風向", icon: "wind", toggle: layerToggle(map, wind.layer) },
     { id: mainLayer("humidity"), label: "濕度", icon: "humidity", toggle: layerToggle(map, humidity.layer) },

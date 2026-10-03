@@ -16,6 +16,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Generated radar frames (backend/radar.py, reprojected O-A0058-005 PNGs)
+data/radar/
+
 # SQLite database files
 *.db
 *.sqlite

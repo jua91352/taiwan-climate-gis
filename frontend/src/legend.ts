@@ -15,6 +15,8 @@ export interface LegendTick {
 
 export interface GradientLegendOptions {
   title: string;
+  /** Unit shown after the title, e.g. dBZ (optional). */
+  unit?: string;
   ariaLabel: string;
   stops: LegendStop[];
   ticks: LegendTick[];
@@ -31,7 +33,9 @@ export function createGradientLegend(opts: GradientLegendOptions): L.Control {
     const box = L.DomUtil.create("div", `map-legend ${opts.className}`);
     box.setAttribute("role", "img");
     box.setAttribute("aria-label", opts.ariaLabel);
-    L.DomUtil.create("div", "map-legend-title", box).textContent = opts.title;
+    const title = L.DomUtil.create("div", "map-legend-title", box);
+    title.textContent = opts.title;
+    if (opts.unit) L.DomUtil.create("span", "map-legend-unit", title).textContent = opts.unit;
     const bar = L.DomUtil.create("div", "map-legend-bar", box);
     bar.style.background = `linear-gradient(to right, ${opts.stops
       .map((stop) => `rgb(${stop.rgb.join(", ")}) ${percent(stop.position)}`)

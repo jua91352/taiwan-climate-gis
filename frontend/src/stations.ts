@@ -52,7 +52,8 @@ function createPopupContent(s: StationObservation): HTMLElement {
     ["氣溫", formatValue(s.temperature, "°C", "")],
     ["相對濕度", formatValue(s.humidity, "%", "")],
     ["風速", formatValue(s.wind_speed, "m/s")],
-    ["風向", formatValue(s.wind_direction, "°", "")],
+    // CWA also sends coded values outside 0–360 (e.g. 990); like the wind layer, show those as missing.
+    ["風向", formatValue(s.wind_direction !== null && s.wind_direction >= 0 && s.wind_direction <= 360 ? s.wind_direction : null, "°", "")],
     ["UV", formatValue(s.uv_index, "UV")],
     ["降雨量", formatValue(s.precipitation, "mm")],
   ];

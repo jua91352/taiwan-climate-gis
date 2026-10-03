@@ -56,6 +56,20 @@ class WeatherFieldTests(unittest.TestCase):
         latest = db.get_latest_observations(self.db_path)
         self.assertIn("weather", latest[0])
 
+    def test_init_db_indexes_latest_observation_lookup(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.executescript(OLD_SCHEMA)  # existing database without the index
+        conn.close()
+        db.init_db(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+            plan = " ".join(str(r) for r in conn.execute("EXPLAIN QUERY PLAN " + db._LATEST_PER_STATION))
+        finally:
+            conn.close()
+        self.assertIn("idx_observation_station_time", names)
+        self.assertIn("idx_observation_station_time", plan)
+
     def test_new_batch_stores_weather_and_duplicates_only_fill_missing(self):
         db.init_db(self.db_path)
         rec = cwa_api.normalize_station(station(None))
