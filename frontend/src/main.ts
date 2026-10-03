@@ -11,6 +11,7 @@ import { createMapControls, layerToggle, type Toggle } from "./mapControls";
 import { createLocator } from "./geolocation";
 import { createRainfallLayer } from "./rainfallHeatmap";
 import { createSourceStatus, type MainLayerId } from "./dataSource";
+import { createWindLayer } from "./windLayer";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -66,6 +67,9 @@ const sourceStatus = createSourceStatus(document.getElementById("data-status"));
 const temperature = createTemperatureLayer(map);
 temperature.layer.addTo(map);
 
+// 風速風向: arrows from the same /api/weather/latest data, off by default.
+const wind = createWindLayer(map);
+
 // 雨量: past-1-hour rainfall surface from /api/rainfall/latest, off by default.
 const rainfall = createRainfallLayer(map, (detail) => sourceStatus.setDetail("rainfall", detail));
 
@@ -88,7 +92,7 @@ const mapControls = createMapControls(map, {
     { id: mainLayer("rainfall"), label: "雨量", icon: "rain", toggle: layerToggle(map, rainfall.layer) },
     { id: mainLayer("radar"), label: "雷達", icon: "radar" },
     { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon" },
-    { id: mainLayer("wind"), label: "風速風向", icon: "wind" },
+    { id: mainLayer("wind"), label: "風速風向", icon: "wind", toggle: layerToggle(map, wind.layer) },
     { id: mainLayer("humidity"), label: "濕度", icon: "humidity" },
     { id: mainLayer("weather"), label: "天氣", icon: "weather" },
     { id: mainLayer("stations"), label: "測站點位", icon: "station", toggle: layerToggle(map, stationLayer) },
@@ -107,17 +111,19 @@ const mapControls = createMapControls(map, {
 });
 container.after(mapControls.element);
 
-// 氣溫 and 測站點位 share this data, so both get the same header detail.
+// 氣溫, 測站點位 and 風速風向 all draw this one response (no extra requests).
 async function loadLatestWeather(): Promise<void> {
   const setDetail = (text: string): void => {
     sourceStatus.setDetail("temperature", text);
     sourceStatus.setDetail("stations", text);
+    sourceStatus.setDetail("wind", text);
   };
 
   try {
     const latest = await api.latestWeather();
     const drawn = renderStations(map, stationLayer, latest.data);
     temperature.render(latest.data);
+    const windStats = wind.render(latest.data);
     if (drawn === 0) {
       setDetail("目前沒有可顯示的測站資料");
       return;
@@ -126,6 +132,7 @@ async function loadLatestWeather(): Promise<void> {
       ? formatObservationTime(latest.latest_observation_time)
       : "尚無觀測資料";
     setDetail(`最新觀測：${time} | 測站 ${drawn} 站`);
+    sourceStatus.setDetail("wind", `最新觀測：${time} | 風速風向 ${windStats.drawn} 站`);
   } catch {
     setDetail("目前無法取得後端氣象資料");
   }

@@ -789,6 +789,70 @@ body {
   border-radius: 999px;
 }
 
+/* 風速風向: arrow centered on the station, pointing where the wind goes,
+   filled with the speed color and outlined in white; calm = small ring.
+   Speed values appear from station zoom (.wind-detail on the pane). */
+.wind-icon {
+  background: none;
+  border: 0;
+}
+
+.wind-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.wind-arrow {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.wind-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: currentColor;
+  stroke: #ffffff;
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.wind-calm-dot {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border: 2.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.wind-value {
+  display: none;
+  position: absolute;
+  top: 10px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: #1f2933;
+  text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 3px #ffffff;
+}
+
+.wind-detail .wind-value {
+  display: block;
+}
+
 /* 我的位置: violet dot with white ring, distinct from teal stations, orange
    temperatures and blue county lines. */
 .my-location-icon {

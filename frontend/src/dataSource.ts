@@ -16,7 +16,7 @@ export const MAIN_LAYER_SOURCES: Record<MainLayerId, LayerSource | null> = {
   rainfall: { provider: CWA, dataset: "O-A0002-001", description: "過去 1 小時雨量" },
   radar: null,
   typhoon: null,
-  wind: null,
+  wind: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：風速／風向" },
   humidity: null,
   weather: null,
   // 測站點位 draws the same /api/weather/latest stations as 氣溫.
