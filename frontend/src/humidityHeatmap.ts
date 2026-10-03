@@ -5,17 +5,21 @@ import { createGradientLegend, setLegendNote } from "./legend";
 import { hasValidCoordinates } from "./stations";
 
 // Relative humidity (%) color scale, dry -> humid: sand, olive, green, teal,
-// blue, indigo at 0/20/…/100 %, blended linearly. Built in OKLCH with lightness
+// blue, indigo at 50/60/…/100 %, blended linearly. The fixed 50–100 % range
+// (not the day's min/max, so maps stay comparable over time) spreads Taiwan's
+// usual 65–100 % readings across the ramp. It only maps colors: the IDW runs on
+// the real values, and anything below 50 % (still valid data) is drawn in the
+// 50 % color. Built in OKLCH with lightness
 // stepping down evenly (0.76 -> 0.41), so it also reads by lightness alone;
 // checked with the dataviz validator (--ordinal: monotone lightness, adjacent
 // ΔL >= 0.06, light-end contrast >= 2:1). Distinct from the blue -> red
 // temperature/rainfall ramps so "high humidity" does not read as "hot".
 export const HUMIDITY_STOPS: readonly { pct: number; color: string }[] = [
-  { pct: 0, color: "#dda552" },
-  { pct: 20, color: "#99a445" },
-  { pct: 40, color: "#4a9a5e" },
-  { pct: 60, color: "#008585" },
-  { pct: 80, color: "#00649a" },
+  { pct: 50, color: "#dda552" },
+  { pct: 60, color: "#99a445" },
+  { pct: 70, color: "#4a9a5e" },
+  { pct: 80, color: "#008585" },
+  { pct: 90, color: "#00649a" },
   { pct: 100, color: "#244395" },
 ];
 
@@ -26,6 +30,7 @@ function hexToRgb(hex: string): RgbColor {
 
 const STOPS = HUMIDITY_STOPS.map((s) => ({ pct: s.pct, rgb: hexToRgb(s.color) }));
 
+/** Color for an (interpolated) humidity; clamped to the 50–100 % ramp. */
 export function humidityRgb(pct: number): RgbColor {
   if (pct <= STOPS[0].pct) return STOPS[0].rgb;
   for (let i = 1; i < STOPS.length; i++) {
@@ -45,15 +50,16 @@ function isValidHumidity(h: number | null): h is number {
   return h !== null && Number.isFinite(h) && h >= 0 && h <= 100;
 }
 
-// Linear % scale, padded 5 % at each end so the 0 and 100 labels fit.
-const legendPosition = (pct: number): number => (pct + 5) / 110;
+// Linear 50–100 % scale, padded 3 % at each end so the "≤50" and "100" labels fit.
+const legendPosition = (pct: number): number => (pct - 47) / 56;
 
 function createLegend(): L.Control {
   return createGradientLegend({
     title: "相對濕度 %",
-    ariaLabel: "相對濕度圖例：由沙色（0 %）漸變到深藍（100 %）",
+    ariaLabel: "相對濕度圖例：由沙色（50 % 以下）漸變到深藍（100 %）",
     stops: STOPS.map((s) => ({ position: legendPosition(s.pct), rgb: s.rgb })),
-    ticks: STOPS.map((s) => ({ position: legendPosition(s.pct), label: String(s.pct) })),
+    // The first color also stands for everything below 50 %.
+    ticks: STOPS.map((s, i) => ({ position: legendPosition(s.pct), label: i === 0 ? `≤${s.pct}` : String(s.pct) })),
     className: "humidity-legend",
   });
 }
