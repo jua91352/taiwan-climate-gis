@@ -34,6 +34,11 @@ export interface LatestWeatherResponse {
   latest_observation_time: string | null;
   count: number;
   data: StationObservation[];
+  /** The backend fetched a new O-A0003-001 batch from CWA for this request. */
+  data_updated?: boolean;
+  /** 10+ minutes old because the last CWA refresh failed (shown as not current). */
+  data_stale?: boolean;
+  refresh_error?: string | null;
 }
 
 export interface CountyWeatherResponse {

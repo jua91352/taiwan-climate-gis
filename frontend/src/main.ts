@@ -131,8 +131,10 @@ async function loadLatestWeather(): Promise<void> {
     const time = latest.latest_observation_time
       ? formatObservationTime(latest.latest_observation_time)
       : "尚無觀測資料";
-    setDetail(`最新觀測：${time} | 測站 ${drawn} 站`);
-    sourceStatus.setDetail("wind", `最新觀測：${time} | 風速風向 ${windStats.drawn} 站`);
+    // The backend could not get a newer batch from CWA: say the time is not current.
+    const stale = latest.data_stale ? "（暫時無法更新）" : "";
+    setDetail(`最新觀測：${time}${stale} | 測站 ${drawn} 站`);
+    sourceStatus.setDetail("wind", `最新觀測：${time}${stale} | 風速風向 ${windStats.drawn} 站`);
   } catch {
     setDetail("目前無法取得後端氣象資料");
   }

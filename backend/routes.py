@@ -1,13 +1,16 @@
-"""Weather REST API. Weather data is read from SQLite; only /rainfall/latest
-calls CWA (live, cached, not stored yet) via backend.cwa_rainfall."""
+"""Weather REST API. Weather data is read from SQLite, refreshed from CWA
+O-A0003-001 first when it is 10+ minutes old (backend.weather_refresh).
+/rainfall/latest calls CWA O-A0002-001 live (cached, not stored)."""
 import math
 from datetime import datetime, timedelta
+from functools import wraps
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from backend import db
 from backend.cwa_api import CWAError
 from backend.cwa_rainfall import RAINFALL_DATASET_ID, UNIT, get_latest_rainfall
+from backend.weather_refresh import ensure_fresh
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -43,7 +46,17 @@ def average(rows: list[dict], field: str) -> float | None:
     return round(sum(values) / len(values), 1) if values else None
 
 
+def fresh_observations(view):
+    """Make sure SQLite holds current O-A0003-001 data before the view reads it."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        g.refresh = ensure_fresh()
+        return view(*args, **kwargs)
+    return wrapper
+
+
 @api.get("/weather/latest")
+@fresh_observations
 def weather_latest():
     rows = db.get_latest_observations()
     return jsonify(
@@ -51,10 +64,15 @@ def weather_latest():
         latest_observation_time=latest_time(rows),
         count=len(rows),
         data=rows,
+        # Freshness metadata (additive; existing fields unchanged).
+        data_updated=g.refresh.updated,
+        data_stale=g.refresh.stale,
+        refresh_error=g.refresh.error,
     )
 
 
 @api.get("/weather/county/<county_name>")
+@fresh_observations
 def weather_county(county_name: str):
     county = normalize_county(county_name)
     if not db.county_exists(county):
@@ -77,6 +95,7 @@ def weather_county(county_name: str):
 
 
 @api.get("/weather/history")
+@fresh_observations
 def weather_history():
     county_param = request.args.get("county", "").strip()
     if not county_param:
@@ -123,6 +142,7 @@ def stations():
 
 
 @api.get("/weather/station/<station_id>")
+@fresh_observations
 def weather_station(station_id: str):
     station = db.get_station(station_id.strip())
     if station is None:

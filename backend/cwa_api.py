@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from backend.db import init_db, save_observations
+from backend.db import DB_PATH, init_db, save_observations
 
 DATASET_ID = "O-A0003-001"
 CWA_FILEAPI_URL = "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/{dataset_id}"
@@ -145,12 +145,12 @@ def parse_stations(payload: dict) -> tuple[list[dict], int]:
     return records, skipped
 
 
-def ingest() -> dict:
+def ingest(db_path: Path = DB_PATH) -> dict:
     """Fetch O-A0003-001, validate it, and store it in SQLite."""
     payload = fetch_weather_data()
     records, skipped = parse_stations(payload)
-    init_db()
-    stats = save_observations(records)
+    init_db(db_path)
+    stats = save_observations(records, db_path)
     return {"fetched_records": len(records) + skipped, "invalid_skipped": skipped, **stats}
 
 
