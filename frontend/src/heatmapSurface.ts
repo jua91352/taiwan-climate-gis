@@ -94,6 +94,22 @@ function landMask(grid: Grid): Uint8ClampedArray {
   return ctx.getImageData(0, 0, grid.cols, grid.rows).data;
 }
 
+let sharedLand: { grid: Grid; mask: Uint8ClampedArray } | null = null;
+
+/** True over Taiwan's counties (plus the ~2 km coastal margin of the heatmap mask). */
+export function isOverTaiwan(lat: number, lng: number): boolean {
+  if (!sharedLand) {
+    const grid = makeGrid();
+    sharedLand = { grid, mask: landMask(grid) };
+  }
+  const { grid, mask } = sharedLand;
+  const p = crs.project(L.latLng(lat, lng));
+  const col = Math.floor((p.x - grid.x0) / CELL_METERS);
+  const row = Math.floor((grid.y0 - p.y) / CELL_METERS);
+  if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return false;
+  return mask[(row * grid.cols + col) * 4 + 3] > 0;
+}
+
 // Local equirectangular km around Taiwan, accurate enough for weighting.
 const KM_PER_DEG_LAT = 110.57;
 const KM_PER_DEG_LNG = 111.32 * Math.cos((23.7 * Math.PI) / 180);

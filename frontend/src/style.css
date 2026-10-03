@@ -789,9 +789,13 @@ body {
   border-radius: 999px;
 }
 
-/* 風速風向: arrow centered on the station, pointing where the wind goes,
-   filled with the speed color and outlined in white; calm = small ring.
-   Speed values appear from station zoom (.wind-detail on the pane). */
+/* 風速風向: animated particle canvas (below), and from station zoom up an
+   arrow per station pointing where the wind goes, filled with the speed color
+   and outlined in white, with its speed; calm = small ring. */
+.wind-particles {
+  position: absolute;
+  pointer-events: none;
+}
 .wind-icon {
   background: none;
   border: 0;
@@ -836,7 +840,6 @@ body {
 }
 
 .wind-value {
-  display: none;
   position: absolute;
   top: 10px;
   left: 0;
@@ -847,10 +850,6 @@ body {
   white-space: nowrap;
   color: #1f2933;
   text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 3px #ffffff;
-}
-
-.wind-detail .wind-value {
-  display: block;
 }
 
 /* 我的位置: violet dot with white ring, distinct from teal stations, orange

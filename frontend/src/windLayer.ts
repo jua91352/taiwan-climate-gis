@@ -4,6 +4,7 @@ import type { RgbColor } from "./heatmapSurface";
 import { createGradientLegend, setLegendNote } from "./legend";
 import { hasValidCoordinates } from "./stations";
 import { STATION_MODE_MIN_ZOOM } from "./temperatureLayer";
+import { WindParticleLayer, windVector, type WindVectorSample } from "./windParticles";
 
 const WIND_PANE = "wind";
 
@@ -68,30 +69,35 @@ function createLegend(): L.Control {
 }
 
 export interface WindStats {
-  /** Stations drawn: valid position + speed (and direction unless calm). */
+  /** Valid stations: position + speed (and direction unless calm). */
   drawn: number;
   calm: number;
 }
 
 export interface WindLayer {
   layer: L.LayerGroup;
-  /** Rebuild arrows from the existing /api/weather/latest data (no requests). */
+  particles: WindParticleLayer;
+  /** Rebuild field + arrows from the existing /api/weather/latest data (no requests). */
   render(stations: StationObservation[]): WindStats;
 }
 
 /**
- * 風速風向 main layer: one arrow per station from the real CWA O-A0003-001
- * WindSpeed / WindDirection, colored by speed. Calm (0 m/s) shows a small
- * circle instead, since its direction is meaningless; stations missing speed,
- * direction or position are skipped. Speed values show from station zoom up.
+ * 風速風向 main layer, all from the real CWA O-A0003-001 WindSpeed /
+ * WindDirection of each station:
+ * - animated particles advected through the interpolated wind field (all zooms;
+ *   thinned out from station zoom up), and
+ * - from station zoom up, one arrow + speed per station (calm = small ring).
+ * Stations missing speed, direction or position are skipped everywhere.
  */
 export function createWindLayer(map: L.Map): WindLayer {
   if (!map.getPane(WIND_PANE)) {
     // Same level as the temperature labels; non-interactive so county clicks pass through.
     map.createPane(WIND_PANE).style.zIndex = "460";
   }
-  const pane = map.getPane(WIND_PANE);
   const layer = L.layerGroup();
+  const arrows = L.layerGroup();
+  const particles = new WindParticleLayer({ colorAt: windSpeedRgb, detailZoom: STATION_MODE_MIN_ZOOM });
+  layer.addLayer(particles);
   const legend = createLegend();
   let stats: WindStats = { drawn: 0, calm: 0 };
   let total = 0;
@@ -99,24 +105,32 @@ export function createWindLayer(map: L.Map): WindLayer {
   const updateNote = (): void => {
     setLegendNote(
       legend,
-      stats.drawn > 0 ? `${stats.drawn} / ${total} 站 · 靜風 ${stats.calm} · 箭頭＝風的去向` : "目前沒有可用的風速風向資料",
+      stats.drawn > 0 ? `${stats.drawn} / ${total} 站插值 · 靜風 ${stats.calm} · 流向＝風的去向` : "目前沒有可用的風速風向資料",
     );
   };
-  const updateZoomClass = (): void => {
-    pane?.classList.toggle("wind-detail", map.getZoom() >= STATION_MODE_MIN_ZOOM);
+  // Arrows only from station zoom up, so they never crowd the particle view.
+  const applyZoom = (): void => {
+    const detail = map.getZoom() >= STATION_MODE_MIN_ZOOM;
+    if (detail !== layer.hasLayer(arrows)) {
+      if (detail) layer.addLayer(arrows);
+      else layer.removeLayer(arrows);
+    }
   };
 
   layer.on("add", () => {
     legend.addTo(map);
     updateNote();
-    updateZoomClass();
+    applyZoom();
   });
   layer.on("remove", () => legend.remove());
-  map.on("zoomend", updateZoomClass);
+  map.on("zoomend", () => {
+    if (map.hasLayer(layer)) applyZoom();
+  });
 
   const render = (stations: StationObservation[]): WindStats => {
-    layer.clearLayers();
+    arrows.clearLayers();
     total = stations.length;
+    const vectors: WindVectorSample[] = [];
     let drawn = 0;
     let calm = 0;
     for (const s of stations) {
@@ -126,6 +140,7 @@ export function createWindLayer(map: L.Map): WindLayer {
       const dir = s.wind_direction;
       const direction = dir !== null && Number.isFinite(dir) && dir >= 0 && dir <= 360 ? dir : null;
       if (!isCalm && direction === null) continue; // never draw a guessed direction
+      vectors.push({ lat: s.latitude, lng: s.longitude, ...(isCalm || direction === null ? { u: 0, v: 0 } : windVector(speed, direction)) });
 
       const [r, g, b] = windSpeedRgb(speed);
       const icon = document.createElement("div");
@@ -152,14 +167,15 @@ export function createWindLayer(map: L.Map): WindLayer {
         pane: WIND_PANE,
         interactive: false,
         keyboard: false,
-      }).addTo(layer);
+      }).addTo(arrows);
       drawn++;
       if (isCalm) calm++;
     }
+    particles.setData(vectors);
     stats = { drawn, calm };
     updateNote();
     return stats;
   };
 
-  return { layer, render };
+  return { layer, particles, render };
 }
