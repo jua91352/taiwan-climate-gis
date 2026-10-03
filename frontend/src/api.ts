@@ -20,6 +20,8 @@ export interface Observation {
   wind_direction: number | null;
   uv_index: number | null;
   precipitation: number | null;
+  /** CWA Weather text (e.g. "晴", "陰有雨"); null when missing. Not in /weather/station. */
+  weather?: string | null;
 }
 
 export type StationObservation = Station & Observation;

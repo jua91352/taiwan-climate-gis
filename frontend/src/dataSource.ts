@@ -18,7 +18,7 @@ export const MAIN_LAYER_SOURCES: Record<MainLayerId, LayerSource | null> = {
   typhoon: null,
   wind: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：風速／風向" },
   humidity: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：相對濕度" },
-  weather: null,
+  weather: { provider: CWA, dataset: "O-A0003-001", description: "目前觀測資料：天氣" },
   // 測站點位 draws the same /api/weather/latest stations as 氣溫.
   stations: { provider: CWA, dataset: "O-A0003-001", description: "測站點位" },
 };

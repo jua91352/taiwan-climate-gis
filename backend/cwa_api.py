@@ -77,6 +77,20 @@ def to_number(value) -> float | None:
     return number
 
 
+def to_text(value) -> str | None:
+    """CWA text measurement (e.g. Weather "晴"); missing markers / sentinels become None."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if text.upper() in MISSING_STRINGS:
+        return None
+    try:
+        float(text)  # descriptive fields are never numbers; this catches -99 / -99.0 etc.
+        return None
+    except ValueError:
+        return text
+
+
 def pick_wgs84(coordinates: list) -> tuple[float | None, float | None]:
     """Return (lat, lon) from the WGS84 entry only; never fall back to another datum."""
     for c in coordinates or []:
@@ -123,6 +137,7 @@ def normalize_station(raw: dict) -> dict | None:
         "wind_direction": to_number(weather.get("WindDirection")),
         "uv_index": to_number(weather.get("UVIndex")),
         "precipitation": to_number((weather.get("Now") or {}).get("Precipitation")),
+        "weather": to_text(weather.get("Weather")),
     }
 
 

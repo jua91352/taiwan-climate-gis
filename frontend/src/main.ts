@@ -13,6 +13,7 @@ import { createRainfallLayer } from "./rainfallHeatmap";
 import { createSourceStatus, type MainLayerId } from "./dataSource";
 import { createWindLayer } from "./windLayer";
 import { createHumidityLayer } from "./humidityHeatmap";
+import { createWeatherLayer } from "./weatherLayer";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -74,6 +75,9 @@ const wind = createWindLayer(map);
 // 濕度: relative humidity surface from the same /api/weather/latest data, off by default.
 const humidity = createHumidityLayer(map);
 
+// 天氣: one representative-weather marker per county, same data, off by default.
+const weather = createWeatherLayer(map);
+
 // 雨量: past-1-hour rainfall surface from /api/rainfall/latest, off by default.
 const rainfall = createRainfallLayer(map, (detail) => sourceStatus.setDetail("rainfall", detail));
 
@@ -98,7 +102,7 @@ const mapControls = createMapControls(map, {
     { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon" },
     { id: mainLayer("wind"), label: "風速風向", icon: "wind", toggle: layerToggle(map, wind.layer) },
     { id: mainLayer("humidity"), label: "濕度", icon: "humidity", toggle: layerToggle(map, humidity.layer) },
-    { id: mainLayer("weather"), label: "天氣", icon: "weather" },
+    { id: mainLayer("weather"), label: "天氣", icon: "weather", toggle: layerToggle(map, weather.layer) },
     { id: mainLayer("stations"), label: "測站點位", icon: "station", toggle: layerToggle(map, stationLayer) },
   ],
   onMainLayerChange: (id) => sourceStatus.setActive(id),
@@ -115,13 +119,14 @@ const mapControls = createMapControls(map, {
 });
 container.after(mapControls.element);
 
-// 氣溫, 測站點位, 風速風向 and 濕度 all draw this one response (no extra requests).
+// 氣溫, 測站點位, 風速風向, 濕度 and 天氣 all draw this one response (no extra requests).
 async function loadLatestWeather(): Promise<void> {
   const setDetail = (text: string): void => {
     sourceStatus.setDetail("temperature", text);
     sourceStatus.setDetail("stations", text);
     sourceStatus.setDetail("wind", text);
     sourceStatus.setDetail("humidity", text);
+    sourceStatus.setDetail("weather", text);
   };
 
   try {
@@ -130,6 +135,7 @@ async function loadLatestWeather(): Promise<void> {
     temperature.render(latest.data);
     const windStats = wind.render(latest.data);
     const humidityCount = humidity.render(latest.data);
+    const counties = weather.render(latest.data, latest.latest_observation_time);
     if (drawn === 0) {
       setDetail("目前沒有可顯示的測站資料");
       return;
@@ -142,6 +148,8 @@ async function loadLatestWeather(): Promise<void> {
     setDetail(`最新觀測：${time}${stale} | 測站 ${drawn} 站`);
     sourceStatus.setDetail("wind", `最新觀測：${time}${stale} | 風速風向 ${windStats.drawn} 站`);
     sourceStatus.setDetail("humidity", humidityCount > 0 ? `最新觀測：${time}${stale} | 濕度 ${humidityCount} 站` : "暫無濕度資料");
+    const weatherStations = counties.reduce((n, c) => n + c.validStations, 0);
+    sourceStatus.setDetail("weather", weatherStations > 0 ? `最新觀測：${time}${stale} | 天氣 ${weatherStations} 站` : "暫無天氣資料");
   } catch {
     setDetail("目前無法取得後端氣象資料");
   }

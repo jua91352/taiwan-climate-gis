@@ -23,9 +23,14 @@ CREATE TABLE IF NOT EXISTS WeatherObservation (
     wind_direction REAL,
     uv_index REAL,
     precipitation REAL,
+    weather TEXT,
     FOREIGN KEY (station_id) REFERENCES Station(station_id)
 );
 """
+
+# Columns added after the first release, applied to existing databases by
+# init_db(). Additive and nullable only: older rows keep NULL, nothing is rewritten.
+MIGRATIONS = (("WeatherObservation", "weather", "TEXT"),)
 
 
 def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -42,6 +47,10 @@ def init_db(db_path: Path = DB_PATH) -> Path:
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA)
+        for table, column, sql_type in MIGRATIONS:
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
         conn.commit()
     finally:
         conn.close()
@@ -52,7 +61,8 @@ def save_observations(records: list[dict], db_path: Path = DB_PATH) -> dict:
     """Upsert stations and insert new observations in a single transaction.
 
     Observations already stored for the same (station_id, observation_time)
-    are skipped. Any database error rolls back the whole batch.
+    are skipped (only a missing weather text is filled in, e.g. for rows stored
+    before that column existed). Any database error rolls back the whole batch.
     """
     stats = {
         "stations_inserted": 0,
@@ -90,17 +100,23 @@ def save_observations(records: list[dict], db_path: Path = DB_PATH) -> dict:
                 ).fetchone()
                 if duplicate:
                     stats["observations_skipped_duplicate"] += 1
+                    if r.get("weather") is not None:
+                        conn.execute(
+                            "UPDATE WeatherObservation SET weather = ? "
+                            "WHERE station_id = ? AND observation_time = ? AND weather IS NULL",
+                            (r["weather"], r["station_id"], r["observation_time"]),
+                        )
                     continue
                 conn.execute(
                     """
                     INSERT INTO WeatherObservation
                         (station_id, observation_time, temperature, humidity,
-                         wind_speed, wind_direction, uv_index, precipitation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         wind_speed, wind_direction, uv_index, precipitation, weather)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (r["station_id"], r["observation_time"], r["temperature"],
                      r["humidity"], r["wind_speed"], r["wind_direction"],
-                     r["uv_index"], r["precipitation"]),
+                     r["uv_index"], r["precipitation"], r.get("weather")),
                 )
                 stats["observations_inserted"] += 1
     finally:
@@ -117,7 +133,7 @@ def save_observations(records: list[dict], db_path: Path = DB_PATH) -> dict:
 _OBSERVATION_COLUMNS = """
     s.station_id, s.station_name, s.county_name, s.town_name, s.latitude, s.longitude,
     w.observation_time, w.temperature, w.humidity, w.wind_speed, w.wind_direction,
-    w.uv_index, w.precipitation
+    w.uv_index, w.precipitation, w.weather
 """
 
 _LATEST_PER_STATION = f"""
