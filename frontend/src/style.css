@@ -1354,3 +1354,119 @@ body {
     gap: 2px 12px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   颱風 layer: current-position marker, forecast points, popup and legend.
+   --------------------------------------------------------------------------- */
+.typhoon-center-icon,
+.typhoon-forecast-icon {
+  background: none;
+  border: 0;
+}
+
+.typhoon-center {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.typhoon-center-symbol {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: #fff;
+  background: #b91c1c;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+.typhoon-center-symbol svg {
+  width: 20px;
+  height: 20px;
+}
+
+.typhoon-center-label {
+  position: absolute;
+  top: 50%;
+  left: 36px;
+  display: flex;
+  flex-direction: column;
+  padding: 3px 7px;
+  color: #1f2933;
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.typhoon-center-zh {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.typhoon-forecast {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+
+.typhoon-forecast-dot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2.5px solid #b91c1c;
+  border-radius: 50%;
+}
+
+.typhoon-forecast-label {
+  position: absolute;
+  top: -3px;
+  left: 15px;
+  padding: 0 4px;
+  color: #7f1d1d;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.typhoon-popup-title {
+  display: block;
+  font-size: 0.875rem;
+}
+
+.typhoon-popup-subtitle {
+  margin: 2px 0 6px;
+  color: #52606d;
+  font-size: 0.75rem;
+}
+
+.typhoon-popup-note {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: #3e4c59;
+}
+
+.typhoon-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.typhoon-legend-item svg {
+  flex: none;
+  width: 28px;
+  height: 12px;
+}

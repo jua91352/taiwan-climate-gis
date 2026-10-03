@@ -1,0 +1,16 @@
+[project]
+name = "taiwan-climate-gis"
+version = "0.1.0"
+description = "Taiwan Climate GIS Dashboard: Flask API over CWA Open Data"
+requires-python = ">=3.12"
+# Same packages as requirements.txt (kept for local `pip install -r`); keep both in sync.
+dependencies = [
+    "Flask",
+    "flask-cors",
+    "requests",
+    "python-dotenv",
+]
+
+[tool.vercel]
+# The Flask app lives in backend/app.py, outside Vercel's default entrypoint locations.
+entrypoint = "backend.app:app"

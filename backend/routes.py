@@ -1,7 +1,8 @@
 """Weather REST API. Weather data is read from SQLite, refreshed from CWA
 O-A0003-001 first when it is 10+ minutes old (backend.weather_refresh).
 /rainfall/latest calls CWA O-A0002-001 live (cached, not stored).
-/radar/history serves stored O-A0058-005 frames (backend.radar)."""
+/radar/history serves stored O-A0058-005 frames (backend.radar).
+/typhoon/latest calls CWA W-C0034-005 live (cached, not stored)."""
 import math
 from datetime import datetime, timedelta
 from functools import wraps
@@ -11,6 +12,7 @@ from flask import Blueprint, abort, g, jsonify, request, send_from_directory, ur
 from backend import db, radar
 from backend.cwa_api import CWAError
 from backend.cwa_rainfall import RAINFALL_DATASET_ID, UNIT, get_latest_rainfall
+from backend.cwa_typhoon import get_latest_typhoons
 from backend.weather_refresh import ensure_fresh
 
 api = Blueprint("api", __name__, url_prefix="/api")
@@ -169,6 +171,23 @@ def rainfall_latest():
         count=len(rows),
         valid_count=sum(r["rainfall"] is not None for r in rows),
         data=rows,
+    )
+
+
+@api.get("/typhoon/latest")
+def typhoon_latest():
+    try:
+        data, refresh_error = get_latest_typhoons()
+    except CWAError as e:
+        # CWAError messages never contain the API key (see backend.cwa_api).
+        return jsonify(success=False, error=str(e)), 502
+    # No active cyclone is a normal state: 200 with an empty list.
+    return jsonify(
+        success=True,
+        **data,
+        count=len(data["typhoons"]),
+        # Set when CWA could not be refreshed and the last good data is served.
+        refresh_error=refresh_error,
     )
 
 

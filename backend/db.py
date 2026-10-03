@@ -1,7 +1,22 @@
+import os
 import sqlite3
+import tempfile
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "weather.db"
+
+def _default_db_path() -> Path:
+    """data/weather.db locally. On Vercel (VERCEL is set) the deployment is
+    read-only and only the temp directory (/tmp) is writable, so the database
+    lives there: it starts empty on each new instance and is not kept or shared.
+    WEATHER_DB_PATH overrides both."""
+    if os.environ.get("WEATHER_DB_PATH"):
+        return Path(os.environ["WEATHER_DB_PATH"])
+    if os.environ.get("VERCEL"):
+        return Path(tempfile.gettempdir()) / "weather.db"
+    return Path(__file__).resolve().parent.parent / "data" / "weather.db"
+
+
+DB_PATH = _default_db_path()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS Station (

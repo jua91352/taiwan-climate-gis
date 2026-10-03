@@ -16,6 +16,7 @@ import { createHumidityLayer } from "./humidityHeatmap";
 import { createWeatherLayer } from "./weatherLayer";
 import { createRadarLayer } from "./radarLayer";
 import { attachRadarLegend } from "./radarLegend";
+import { createTyphoonLayer } from "./typhoonLayer";
 
 const container = document.getElementById("map");
 const detailsContainer = document.getElementById("county-details");
@@ -97,6 +98,23 @@ new ResizeObserver(() => {
   container.style.setProperty("--timeline-offset", `${height}px`);
 }).observe(radar.timeline);
 
+// 颱風: CWA W-C0034-005 tracks from /api/typhoon/latest, off by default. The map
+// fits the tracks when it opens, leaving room for the header and an expanded
+// controls panel.
+const typhoon = createTyphoonLayer(
+  map,
+  (detail) => sourceStatus.setDetail("typhoon", detail),
+  () => {
+    const header = document.querySelector<HTMLElement>(".app-header");
+    const controls = mapControls.element;
+    const controlsOpen = !controls.classList.contains("is-collapsed");
+    return {
+      paddingTopLeft: [24, (header?.offsetHeight ?? 0) + 24],
+      paddingBottomRight: [controlsOpen ? controls.offsetWidth + 36 : 24, 40],
+    };
+  },
+);
+
 // 氣溫數字標籤: show/hide the numbers drawn by the temperature layer (CSS only).
 const temperatureLabels: Toggle = {
   isOn: () => !container.classList.contains("temp-labels-hidden"),
@@ -108,14 +126,14 @@ const temperatureLabels: Toggle = {
 const locateMe = createLocator(map, container.parentElement ?? document.body);
 
 // Right-side panel. The 8 main weather layers are mutually exclusive (at most one
-// on); items without a toggle are shown as 即將提供 (later batches).
+// on); an item without a toggle would be shown as 即將提供.
 const mainLayer = (id: MainLayerId) => id;
 const mapControls = createMapControls(map, {
   layers: [
     { id: mainLayer("temperature"), label: "氣溫", icon: "temperature", toggle: layerToggle(map, temperature.layer) },
     { id: mainLayer("rainfall"), label: "雨量", icon: "rain", toggle: layerToggle(map, rainfall.layer) },
     { id: mainLayer("radar"), label: "雷達", icon: "radar", toggle: layerToggle(map, radar.layer) },
-    { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon" },
+    { id: mainLayer("typhoon"), label: "颱風", icon: "typhoon", toggle: layerToggle(map, typhoon.layer) },
     { id: mainLayer("wind"), label: "風速風向", icon: "wind", toggle: layerToggle(map, wind.layer) },
     { id: mainLayer("humidity"), label: "濕度", icon: "humidity", toggle: layerToggle(map, humidity.layer) },
     { id: mainLayer("weather"), label: "天氣", icon: "weather", toggle: layerToggle(map, weather.layer) },
