@@ -1,6 +1,7 @@
 """Tests for backend.weather_refresh (O-A0003-001 auto refresh on read).
 
-Each test uses its own temporary SQLite file and a fake CWA payload in place
+Each test uses its own temporary SQLite file (or emptied local PostgreSQL
+tables, see tests.db_support) and a fake CWA payload in place
 of the network call; the real ingest -> parse -> save path is exercised.
 Run: python -m unittest tests.test_weather_refresh
 """
@@ -13,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from backend import cwa_api, db
+from tests.db_support import fresh_weather_db
 from backend.weather_refresh import FRESHNESS_THRESHOLD, RETRY_COOLDOWN, ensure_fresh, is_fresh
 
 TAIPEI = timezone(timedelta(hours=8))
@@ -42,7 +44,7 @@ class RefreshTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "weather.db"
-        db.init_db(self.db_path)
+        fresh_weather_db(self.db_path)
         self.fetch_calls = 0
         self.next_payload = cwa_payload(NOW)
 

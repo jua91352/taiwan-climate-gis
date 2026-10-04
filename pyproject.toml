@@ -9,6 +9,7 @@ dependencies = [
     "flask-cors",
     "requests",
     "python-dotenv",
+    "psycopg[binary]",  # DATABASE_BACKEND=postgres (backend.db)
 ]
 
 [tool.vercel]

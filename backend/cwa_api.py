@@ -161,7 +161,7 @@ def parse_stations(payload: dict) -> tuple[list[dict], int]:
 
 
 def ingest(db_path: Path = DB_PATH) -> dict:
-    """Fetch O-A0003-001, validate it, and store it in SQLite."""
+    """Fetch O-A0003-001, validate it, and store it (backend.db)."""
     payload = fetch_weather_data()
     records, skipped = parse_stations(payload)
     init_db(db_path)

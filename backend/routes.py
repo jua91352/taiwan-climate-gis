@@ -1,4 +1,5 @@
-"""Weather REST API. Weather data is read from SQLite, refreshed from CWA
+"""Weather REST API. Weather data is read from the weather database
+(backend.db: SQLite or PostgreSQL), refreshed from CWA
 O-A0003-001 first when it is 10+ minutes old (backend.weather_refresh).
 /rainfall/latest calls CWA O-A0002-001 live (cached, not stored).
 /radar/history serves stored O-A0058-005 frames (backend.radar).
@@ -51,7 +52,7 @@ def average(rows: list[dict], field: str) -> float | None:
 
 
 def fresh_observations(view):
-    """Make sure SQLite holds current O-A0003-001 data before the view reads it."""
+    """Make sure the weather database holds current O-A0003-001 data before the view reads it."""
     @wraps(view)
     def wrapper(*args, **kwargs):
         g.refresh = ensure_fresh()
@@ -116,7 +117,7 @@ def weather_history():
     if not db.county_exists(county):
         return error(f"County not found: {county_param}", 404)
 
-    # The window ends at the newest observation in SQLite rather than the
+    # The window ends at the newest stored observation rather than the
     # system clock, so `days=7` means "the 7 days of data leading up to the
     # latest stored batch" even when ingestion has not run recently.
     # Stored times share CWA's fixed +08:00 offset, so `since` is formatted

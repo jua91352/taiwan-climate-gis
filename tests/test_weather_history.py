@@ -1,13 +1,13 @@
 """Historical weather data integrity: storage, duplicates, missing values,
 history windows and county aggregation (/api/weather/history).
 
-Every test uses its own temporary SQLite file, fed through the real
+Every test uses its own temporary SQLite file (or emptied local PostgreSQL
+tables, see tests.db_support), fed through the real
 normalize -> save_observations path; data/weather.db is never touched.
 Run: python -m unittest tests.test_weather_history
 """
 import math
 import os
-import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -19,6 +19,7 @@ os.environ.setdefault("RADAR_COLLECTOR", "0")  # importing backend.app must not 
 
 from backend import cwa_api, db, routes  # noqa: E402
 from backend.weather_refresh import RefreshStatus  # noqa: E402
+from tests.db_support import execute_weather, fresh_weather_db  # noqa: E402
 
 TAIPEI = timezone(timedelta(hours=8))
 LATEST = datetime(2026, 10, 4, 1, 10, tzinfo=TAIPEI)
@@ -43,7 +44,7 @@ class HistoryTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "weather.db"
-        db.init_db(self.db_path)
+        fresh_weather_db(self.db_path)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -178,10 +179,7 @@ class MissingValueTests(HistoryTestCase):
 
     def test_non_finite_stored_value_is_returned_as_null(self):
         self.save(raw_station("A1", "臺北市", LATEST))
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("UPDATE WeatherObservation SET temperature = 9e999")  # +Infinity
-        conn.commit()
-        conn.close()
+        execute_weather(self.db_path, "UPDATE WeatherObservation SET temperature = ?", (math.inf,))
         point = self.history("臺北市", 1)["data"][0]
         self.assertIsNone(point["avg_temperature"])
         self.assertTrue(all(not (isinstance(v, float) and not math.isfinite(v)) for v in point.values()))

@@ -1,6 +1,6 @@
-"""Keep SQLite's O-A0003-001 observations fresh when the API reads them.
+"""Keep the stored O-A0003-001 observations fresh when the API reads them.
 
-Freshness is judged from the newest observation_time stored in SQLite (CWA's
+Freshness is judged from the newest observation_time stored (CWA's
 own +08:00 timestamps), never from server start time. When it is
 FRESHNESS_THRESHOLD old or older, the existing ingest() fetches CWA and appends
 the new batch (history is kept; duplicates are skipped). One lock makes
@@ -9,7 +9,6 @@ served unchanged and flagged as stale. CWA publishes each batch a few minutes
 after its observation time, so "10+ minutes old but CWA has nothing newer"
 is normal: it is not stale, and CWA is asked again after RETRY_COOLDOWN.
 """
-import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -49,7 +48,7 @@ _last_error: dict[Path, str | None] = {}
 
 
 def ensure_fresh(db_path: Path = db.DB_PATH, now: Callable[[], datetime] = utc_now) -> RefreshStatus:
-    """Refresh SQLite from CWA if its newest observation is too old; never raises for CWA errors."""
+    """Refresh the weather database from CWA if its newest observation is too old; never raises for CWA errors."""
     latest = db.get_latest_observation_time(db_path)
     if is_fresh(latest, now()):
         return RefreshStatus(updated=False, stale=False, error=None, latest_observation_time=latest)
@@ -72,8 +71,8 @@ def ensure_fresh(db_path: Path = db.DB_PATH, now: Callable[[], datetime] = utc_n
             updated = stats["observations_inserted"] > 0
         except cwa_api.CWAError as e:
             error = str(e)
-        except sqlite3.Error as e:  # save_observations rolled back; stored data is intact
-            error = f"SQLite error while saving CWA data: {type(e).__name__}"
+        except db.DBError as e:  # save_observations rolled back; stored data is intact
+            error = f"Database error while saving CWA data: {type(e).__name__}"
         _last_error[db_path] = error
 
         latest = db.get_latest_observation_time(db_path)
