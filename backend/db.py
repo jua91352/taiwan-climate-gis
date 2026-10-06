@@ -1,13 +1,12 @@
 """Storage for weather observations (Station, WeatherObservation) and radar
 frame metadata (RadarFrame).
 
-DATABASE_BACKEND selects where the weather tables live:
+DATABASE_BACKEND selects where all three tables live:
   sqlite (default)  the SQLite file at DB_PATH, as before.
-  postgres          the PostgreSQL database at DATABASE_URL (e.g. Neon); the
-                    weather tables are never written to the SQLite file.
-RadarFrame always stays in the SQLite file at DB_PATH, next to the PNGs it
-describes (backend.radar). Every function keeps its db_path parameter: it
-names that SQLite file, and in postgres mode the weather functions ignore it.
+  postgres          the PostgreSQL database at DATABASE_URL (e.g. Neon); no
+                    SQLite file is created or written.
+Every function keeps its db_path parameter: it names the SQLite file, and in
+postgres mode it is ignored.
 """
 import os
 import sqlite3
@@ -111,7 +110,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_observation_station_time
 """
 
 # Radar frames: metadata only, the PNG lives on disk (file_path is relative
-# to the data directory). Always in the SQLite file.
+# to the data directory). The same SQL creates it in SQLite and PostgreSQL;
+# the primary key keeps one row per timestamp.
 RADAR_SCHEMA = """
 CREATE TABLE IF NOT EXISTS RadarFrame (
     timestamp TEXT PRIMARY KEY,
@@ -128,7 +128,7 @@ MIGRATIONS = (("WeatherObservation", "weather", "TEXT"),)
 # Serialises schema creation when several instances start at once
 # (concurrent CREATE ... IF NOT EXISTS can collide in PostgreSQL).
 _SCHEMA_LOCK_ID = 7_340_001
-_postgres_ready = False
+_postgres_ready: set[str] = set()  # schemas already created by this process
 
 
 def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -170,7 +170,7 @@ class _PostgresConnection:
 
 
 def _weather_connection(db_path: Path = DB_PATH):
-    """Connection to wherever the weather tables live."""
+    """Connection to wherever the tables live (weather and RadarFrame alike)."""
     if DATABASE_BACKEND == "postgres":
         return _PostgresConnection()
     return get_connection(db_path)
@@ -198,36 +198,46 @@ def _init_sqlite_weather(conn: sqlite3.Connection) -> None:
         )
 
 
-def _init_postgres_weather() -> None:
-    """Create the PostgreSQL weather tables once per process."""
-    global _postgres_ready
-    if _postgres_ready:
+def _init_postgres_schema(name: str, schema: str) -> None:
+    """Run one schema's CREATE ... IF NOT EXISTS statements once per process."""
+    if name in _postgres_ready:
         return
     conn = _PostgresConnection()
     try:
         conn.execute("SELECT pg_advisory_xact_lock(?)", (_SCHEMA_LOCK_ID,))
-        for statement in POSTGRES_WEATHER_SCHEMA.split(";"):
+        for statement in schema.split(";"):
             if statement.strip():
                 conn.execute(statement)
         conn.commit()
     finally:
         conn.close()
-    _postgres_ready = True
+    _postgres_ready.add(name)
+
+
+def _init_postgres_weather() -> None:
+    """Create the PostgreSQL weather tables once per process."""
+    _init_postgres_schema("weather", POSTGRES_WEATHER_SCHEMA)
+
+
+def _init_postgres_radar() -> None:
+    """Create the PostgreSQL RadarFrame table once per process."""
+    _init_postgres_schema("radar", RADAR_SCHEMA)
 
 
 def init_db(db_path: Path = DB_PATH) -> Path:
     """Create the database file and tables if missing. Safe to run repeatedly."""
+    if DATABASE_BACKEND == "postgres":
+        _init_postgres_weather()
+        _init_postgres_radar()
+        return db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection(db_path)
     try:
         conn.executescript(RADAR_SCHEMA)
-        if DATABASE_BACKEND == "sqlite":
-            _init_sqlite_weather(conn)
+        _init_sqlite_weather(conn)
         conn.commit()
     finally:
         conn.close()
-    if DATABASE_BACKEND == "postgres":
-        _init_postgres_weather()
     return db_path
 
 
@@ -335,16 +345,8 @@ _LATEST_PER_STATION = f"""
 
 
 def _query(sql: str, params: tuple = (), db_path: Path = DB_PATH) -> list[dict]:
-    """Run a read query against the weather tables."""
+    """Run a read query against the configured database."""
     conn = _weather_connection(db_path)
-    try:
-        return [dict(row) for row in conn.execute(sql, params).fetchall()]
-    finally:
-        conn.close()
-
-
-def _sqlite_query(sql: str, params: tuple = (), db_path: Path = DB_PATH) -> list[dict]:
-    conn = get_connection(db_path)
     try:
         return [dict(row) for row in conn.execute(sql, params).fetchall()]
     finally:
@@ -438,37 +440,48 @@ def get_county_history(county_name: str, since: str, until: str, db_path: Path =
 
 
 # ---------------------------------------------------------------------------
-# Radar frame metadata, always in the SQLite file. timestamp is CWA's ISO 8601
+# Radar frame metadata, in the configured database. timestamp is CWA's ISO 8601
 # time with its fixed +08:00 offset, so string comparison orders it chronologically.
 # ---------------------------------------------------------------------------
 
 def radar_frame_exists(timestamp: str, db_path: Path = DB_PATH) -> bool:
-    return bool(_sqlite_query("SELECT 1 FROM RadarFrame WHERE timestamp = ?", (timestamp,), db_path))
+    return bool(_query("SELECT 1 FROM RadarFrame WHERE timestamp = ?", (timestamp,), db_path))
 
 
 def insert_radar_frame(timestamp: str, file_path: str, source: str, db_path: Path = DB_PATH) -> bool:
-    """Store one frame's metadata; False if that timestamp is already stored."""
-    conn = get_connection(db_path)
+    """Store one frame's metadata; False if that timestamp is already stored.
+    ON CONFLICT also covers another instance storing the same frame at once."""
+    conn = _weather_connection(db_path)
     try:
-        with conn:
-            cursor = conn.execute(
-                "INSERT OR IGNORE INTO RadarFrame (timestamp, file_path, source) VALUES (?, ?, ?)",
-                (timestamp, file_path, source),
-            )
-            return cursor.rowcount == 1
+        cursor = conn.execute(
+            "INSERT INTO RadarFrame (timestamp, file_path, source) VALUES (?, ?, ?) "
+            "ON CONFLICT (timestamp) DO NOTHING",
+            (timestamp, file_path, source),
+        )
+        inserted = cursor.rowcount == 1
+        conn.commit()
+        return inserted
+    except BaseException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def get_radar_frames(db_path: Path = DB_PATH) -> list[dict]:
     """All stored frames, oldest first."""
-    return _sqlite_query("SELECT timestamp, file_path, source FROM RadarFrame ORDER BY timestamp", db_path=db_path)
+    return _query("SELECT timestamp, file_path, source FROM RadarFrame ORDER BY timestamp", db_path=db_path)
 
 
 def delete_radar_frames(timestamps: list[str], db_path: Path = DB_PATH) -> None:
-    conn = get_connection(db_path)
+    if not timestamps:
+        return
+    conn = _weather_connection(db_path)
     try:
-        with conn:
-            conn.executemany("DELETE FROM RadarFrame WHERE timestamp = ?", [(t,) for t in timestamps])
+        conn.executemany("DELETE FROM RadarFrame WHERE timestamp = ?", [(t,) for t in timestamps])
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
     finally:
         conn.close()

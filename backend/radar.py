@@ -8,15 +8,16 @@ metadata did not change while the PNG downloaded and both objects carry
 (nearly) the same S3 Last-Modified time, so an image is never stored under
 another frame's timestamp.
 
-Each frame is reprojected to Web Mercator (backend.radar_png) and written to
-data/radar/; SQLite holds only its metadata (RadarFrame). Frames older than
-RETENTION before the newest one are deleted after each new frame. A failed
-download changes nothing on disk or in SQLite. One lock serialises the
-startup run, the 10-minute background collector and request-triggered runs.
+Each frame is reprojected to Web Mercator (backend.radar_png) and stored by
+backend.radar_storage (data/radar/ or Vercel Blob); the database holds only
+its metadata (RadarFrame, backend.db). The PNG is stored first and its row
+written second, so a row never points at a missing upload; a PNG whose row
+could not be written is removed again. Frames older than RETENTION before the
+newest one are deleted after each new frame, PNG first, then row. A failed
+download changes nothing. One lock serialises the startup run, the 10-minute
+background collector and request-triggered runs of this process.
 """
 import logging
-import os
-import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,7 +27,8 @@ from pathlib import Path
 
 import requests
 
-from backend import db, radar_png
+from backend import db, radar_png, radar_storage
+from backend.radar_storage import StorageError
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +52,8 @@ RETRY_COOLDOWN = timedelta(minutes=2)
 # already belongs to another frame.
 MAX_UPLOAD_SKEW = timedelta(minutes=2)
 
-DATA_DIR = db.DB_PATH.parent
-FRAME_DIR_NAME = "radar"
+DATA_DIR = db.DB_PATH.parent  # local storage only
+FRAME_DIR_NAME = radar_storage.FRAME_DIR_NAME
 
 
 class RadarError(Exception):
@@ -137,8 +139,10 @@ def frame_dir(data_dir: Path) -> Path:
 
 
 def available_frames(db_path: Path = db.DB_PATH, data_dir: Path = DATA_DIR) -> list[dict]:
-    """Stored frames within the retention window whose file exists, oldest first."""
-    frames = [f for f in db.get_radar_frames(db_path) if (data_dir / f["file_path"]).is_file()]
+    """Stored frames within the retention window whose PNG exists, oldest first.
+    Local storage checks the file; for Blob storage the row is the record."""
+    storage = radar_storage.get_storage(data_dir)
+    frames = [f for f in db.get_radar_frames(db_path) if storage.exists(f["file_path"])]
     return _retained(frames)
 
 
@@ -150,33 +154,46 @@ def _retained(frames: list[dict]) -> list[dict]:
 
 
 def prune(db_path: Path = db.DB_PATH, data_dir: Path = DATA_DIR) -> list[str]:
-    """Delete frames outside the retention window, and stray files. Returns removed timestamps."""
+    """Delete frames outside the retention window, and stray local files.
+    Returns removed timestamps.
+
+    PNGs are deleted before their rows: if Blob refuses, StorageError is raised
+    with every row still in place, and the next prune tries again.
+    """
+    storage = radar_storage.get_storage(data_dir)
     frames = db.get_radar_frames(db_path)
     keep = {f["timestamp"] for f in _retained(frames)}
     removed = [f for f in frames if f["timestamp"] not in keep]
+    storage.delete([f["file_path"] for f in removed])
     db.delete_radar_frames([f["timestamp"] for f in removed], db_path)
-    kept_files = {Path(f["file_path"]).name for f in frames if f["timestamp"] in keep}
-    directory = frame_dir(data_dir)
-    if directory.is_dir():
-        for path in directory.iterdir():
-            if path.is_file() and path.name not in kept_files and path.name.startswith("radar_"):
-                # A file can be briefly locked (e.g. being served on Windows);
-                # it is no longer listed and the next prune retries it.
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError as e:
-                    log.warning("Could not delete old radar file %s: %s", path.name, type(e).__name__)
+    storage.sweep({Path(f["file_path"]).name for f in frames if f["timestamp"] in keep})
     return [f["timestamp"] for f in removed]
+
+
+def _discard_unrecorded(storage, db_path: Path, timestamp: str, relative: str) -> None:
+    """Remove a just-stored PNG whose row could not be written. Kept when the
+    row exists after all (another instance stored the same frame) or when the
+    database cannot tell: a stray PNG is harmless, a row without its PNG is not."""
+    try:
+        if db.radar_frame_exists(timestamp, db_path):
+            return
+    except db.DBError:
+        log.warning("Kept radar PNG %s: database unavailable to confirm it is unused", relative)
+        return
+    try:
+        storage.delete([relative])
+    except StorageError as e:
+        log.warning("Could not remove unrecorded radar PNG %s: %s", relative, e)
 
 
 def _collect(db_path: Path, data_dir: Path,
              fetch_metadata: Callable[[], Metadata], fetch_png: Callable[[], tuple[bytes, datetime]]) -> CollectResult:
+    storage = radar_storage.get_storage(data_dir)
     meta = fetch_metadata()
     relative = f"{FRAME_DIR_NAME}/{frame_file_name(meta.timestamp)}"
-    path = data_dir / relative
-    # Already stored on both sides. A row whose PNG went missing is downloaded
-    # again (the row is kept), so the frame becomes usable once more.
-    if db.radar_frame_exists(meta.timestamp, db_path) and path.is_file():
+    # Already stored on both sides. A row whose local PNG went missing is
+    # downloaded again (the row is kept), so the frame becomes usable once more.
+    if db.radar_frame_exists(meta.timestamp, db_path) and storage.exists(relative):
         return CollectResult(added=False, timestamp=meta.timestamp, error=None)
 
     png, png_modified = fetch_png()
@@ -189,16 +206,18 @@ def _collect(db_path: Path, data_dir: Path,
     except radar_png.PNGError as e:
         raise RadarError(f"Invalid O-A0058-005 PNG: {e}") from None
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_bytes(mercator)
-    os.replace(tmp, path)  # readers never see a half-written file
+    storage.save(relative, mercator)  # StorageError: nothing was recorded
     try:
         added = db.insert_radar_frame(meta.timestamp, relative, SOURCE, db_path)
-    except sqlite3.Error:
-        path.unlink(missing_ok=True)
+    except db.DBError:
+        _discard_unrecorded(storage, db_path, meta.timestamp, relative)
         raise
-    prune(db_path, data_dir)
+    try:
+        prune(db_path, data_dir)
+    except (StorageError, *db.DBError) as e:
+        # The new frame is stored; only the clean-up of old ones failed.
+        detail = str(e) if isinstance(e, StorageError) else type(e).__name__
+        return CollectResult(added=added, timestamp=meta.timestamp, error=f"Could not prune old radar frames: {detail}")
     return CollectResult(added=added, timestamp=meta.timestamp, error=None)
 
 
@@ -220,9 +239,9 @@ def _collect_locked(db_path, data_dir, fetch_metadata, fetch_png, now) -> Collec
     _last_attempt[db_path] = now()
     try:
         result = _collect(db_path, data_dir, fetch_metadata, fetch_png)
-    except RadarError as e:
+    except (RadarError, StorageError) as e:
         result = CollectResult(added=False, timestamp=None, error=str(e))
-    except (sqlite3.Error, OSError) as e:
+    except (*db.DBError, OSError) as e:
         result = CollectResult(added=False, timestamp=None, error=f"Could not store radar frame: {type(e).__name__}")
     _last_error[db_path] = result.error
     if result.error:

@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from backend import cwa_api, db
-from tests.db_support import fresh_weather_db
+from tests.db_support import fresh_db
 from backend.weather_refresh import FRESHNESS_THRESHOLD, RETRY_COOLDOWN, ensure_fresh, is_fresh
 
 TAIPEI = timezone(timedelta(hours=8))
@@ -44,7 +44,7 @@ class RefreshTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "weather.db"
-        fresh_weather_db(self.db_path)
+        fresh_db(self.db_path)
         self.fetch_calls = 0
         self.next_payload = cwa_payload(NOW)
 

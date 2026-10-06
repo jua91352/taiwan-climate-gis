@@ -10,6 +10,7 @@ dependencies = [
     "requests",
     "python-dotenv",
     "psycopg[binary]",  # DATABASE_BACKEND=postgres (backend.db)
+    "vercel",  # Vercel Blob SDK (vercel.blob)
 ]
 
 [tool.vercel]

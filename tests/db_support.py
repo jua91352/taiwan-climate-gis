@@ -1,8 +1,9 @@
-"""Lets the weather tests run on either backend (backend.db.DATABASE_BACKEND).
+"""Lets the tests run on either backend (backend.db.DATABASE_BACKEND).
 
 SQLite: every test has its own temporary file, as before. PostgreSQL: all
-tests share the database at DATABASE_URL, so the weather tables are emptied
-before each test; that is only done on a local server, never on Neon.
+tests share the database at DATABASE_URL, so its tables (weather and
+RadarFrame) are emptied before each test; that is only done on a local
+server, never on Neon.
 """
 import unittest
 from pathlib import Path
@@ -18,7 +19,7 @@ sqlite_only = unittest.skipIf(POSTGRES, "tests the SQLite file schema")
 
 
 def execute_weather(db_path: Path, sql: str, params: tuple = ()) -> None:
-    """Run one write statement against the weather tables and commit it."""
+    """Run one write statement against the configured database and commit it."""
     conn = db._weather_connection(db_path)
     try:
         conn.execute(sql, params)
@@ -27,11 +28,11 @@ def execute_weather(db_path: Path, sql: str, params: tuple = ()) -> None:
         conn.close()
 
 
-def fresh_weather_db(db_path: Path) -> None:
-    """init_db(), with no weather rows left from an earlier test."""
+def fresh_db(db_path: Path) -> None:
+    """init_db(), with no rows left from an earlier test."""
     db.init_db(db_path)
     if POSTGRES:
         host = urlsplit(db.DATABASE_URL).hostname
         if host not in LOCAL_HOSTS:
             raise RuntimeError(f"Tests only empty a local PostgreSQL database, not one on {host!r}")
-        execute_weather(db_path, "TRUNCATE WeatherObservation, Station RESTART IDENTITY")
+        execute_weather(db_path, "TRUNCATE WeatherObservation, Station, RadarFrame RESTART IDENTITY")

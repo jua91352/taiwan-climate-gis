@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from backend import cwa_api, db
-from tests.db_support import execute_weather, fresh_weather_db, sqlite_only
+from tests.db_support import execute_weather, fresh_db, sqlite_only
 
 OLD_SCHEMA = """
 CREATE TABLE Station (station_id TEXT PRIMARY KEY, station_name TEXT NOT NULL, county_name TEXT,
@@ -94,14 +94,14 @@ class WeatherFieldTests(unittest.TestCase):
         self.assertEqual(rows, [{"temperature": 25.1}])  # the first stored row is kept
 
     def test_same_station_and_time_cannot_be_stored_twice(self):
-        fresh_weather_db(self.db_path)
+        fresh_db(self.db_path)
         db.save_observations([cwa_api.normalize_station(station("晴"))], self.db_path)
         with self.assertRaises(db.DBError):
             execute_weather(self.db_path, "INSERT INTO WeatherObservation (station_id, observation_time) VALUES (?, ?)",
                             ("466920", "2026-10-03T22:30:00+08:00"))
 
     def test_new_batch_stores_weather_and_duplicates_only_fill_missing(self):
-        fresh_weather_db(self.db_path)
+        fresh_db(self.db_path)
         rec = cwa_api.normalize_station(station(None))
         db.save_observations([rec], self.db_path)
         self.assertIsNone(db.get_latest_observations(self.db_path)[0]["weather"])

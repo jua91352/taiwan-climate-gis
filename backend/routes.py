@@ -2,16 +2,17 @@
 (backend.db: SQLite or PostgreSQL), refreshed from CWA
 O-A0003-001 first when it is 10+ minutes old (backend.weather_refresh).
 /rainfall/latest calls CWA O-A0002-001 live (cached, not stored).
-/radar/history serves stored O-A0058-005 frames (backend.radar).
+/radar/history serves stored O-A0058-005 frames (backend.radar); /radar/frames
+sends local PNGs or redirects to Vercel Blob (backend.radar_storage).
 /typhoon/latest calls CWA W-C0034-005 live (cached, not stored)."""
 import math
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import unquote
 
-from flask import Blueprint, abort, g, jsonify, request, send_from_directory, url_for
+from flask import Blueprint, abort, g, jsonify, redirect, request, send_from_directory, url_for
 
-from backend import db, radar
+from backend import db, radar, radar_storage
 from backend.cwa_api import CWAError
 from backend.cwa_rainfall import RAINFALL_DATASET_ID, UNIT, get_latest_rainfall
 from backend.cwa_typhoon import get_latest_typhoons
@@ -221,7 +222,19 @@ def radar_history():
 @api.get("/radar/frames/<filename>")
 def radar_frame(filename: str):
     # Only files of frames that are currently listed are served.
-    if filename not in {radar.frame_file_name(f["timestamp"]) for f in radar.available_frames(db.DB_PATH, radar.DATA_DIR)}:
+    frame = next((f for f in radar.available_frames(db.DB_PATH, radar.DATA_DIR)
+                  if radar.frame_file_name(f["timestamp"]) == filename), None)
+    if frame is None:
         abort(404)
-    # A frame's image never changes once stored.
+    storage = radar_storage.get_storage(radar.DATA_DIR)
+    if isinstance(storage, radar_storage.VercelBlobRadarStorage):
+        # The browser loads the PNG straight from the Blob CDN; Flask never downloads it.
+        try:
+            response = redirect(storage.public_url(frame["file_path"]), 302)
+        except radar_storage.StorageError as e:
+            return error(str(e), 503)
+        # A frame's image never changes once stored, so the redirect can be cached too.
+        response.cache_control.public = True
+        response.cache_control.max_age = 7200
+        return response
     return send_from_directory(radar.frame_dir(radar.DATA_DIR), filename, mimetype="image/png", max_age=7200)

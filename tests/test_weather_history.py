@@ -19,7 +19,7 @@ os.environ.setdefault("RADAR_COLLECTOR", "0")  # importing backend.app must not 
 
 from backend import cwa_api, db, routes  # noqa: E402
 from backend.weather_refresh import RefreshStatus  # noqa: E402
-from tests.db_support import execute_weather, fresh_weather_db  # noqa: E402
+from tests.db_support import execute_weather, fresh_db  # noqa: E402
 
 TAIPEI = timezone(timedelta(hours=8))
 LATEST = datetime(2026, 10, 4, 1, 10, tzinfo=TAIPEI)
@@ -44,7 +44,7 @@ class HistoryTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "weather.db"
-        fresh_weather_db(self.db_path)
+        fresh_db(self.db_path)
 
     def tearDown(self):
         self.tmp.cleanup()

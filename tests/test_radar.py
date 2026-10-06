@@ -19,6 +19,8 @@ from unittest import mock
 os.environ["RADAR_COLLECTOR"] = "0"  # importing backend.app must not start the real collector
 
 from backend import db, radar, radar_png  # noqa: E402
+from tests.db_support import fresh_db  # noqa: E402
+from tests.radar_support import RadarStorageMixin, local_only  # noqa: E402
 
 TAIPEI = timezone(timedelta(hours=8))
 T0 = datetime(2026, 10, 3, 21, 0, tzinfo=TAIPEI)
@@ -134,12 +136,13 @@ class FakeCWA:
         return self.png, self.png_modified
 
 
-class CollectorTestCase(unittest.TestCase):
+class CollectorTestCase(RadarStorageMixin, unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.data_dir = Path(self.tmp.name)
         self.db_path = self.data_dir / "weather.db"
-        db.init_db(self.db_path)
+        fresh_db(self.db_path)
+        self.start_storage()
         self.cwa = FakeCWA(T0)
 
     def tearDown(self):
@@ -153,7 +156,7 @@ class CollectorTestCase(unittest.TestCase):
         return db.get_radar_frames(self.db_path)
 
     def files(self):
-        return sorted(p.name for p in radar.frame_dir(self.data_dir).iterdir())
+        return self.stored_names()
 
 
 class CollectTests(CollectorTestCase):
@@ -163,7 +166,7 @@ class CollectTests(CollectorTestCase):
         self.assertEqual(self.frames(), [{"timestamp": "2026-10-03T21:00:00+08:00",
                                           "file_path": "radar/radar_202610032100.png", "source": "O-A0058-005"}])
         _, _, source_rows = radar_png.decode_rgba(self.cwa.png)
-        width, _, rows = radar_png.decode_rgba((self.data_dir / "radar/radar_202610032100.png").read_bytes())
+        width, _, rows = radar_png.decode_rgba(self.stored_bytes("radar_202610032100.png"))
         mapping = radar_png.mercator_row_map(6, 17.75, 29.25, 115.0, 126.5, 4)
         self.assertEqual(width, 4)
         self.assertEqual(rows, [source_rows[i] for i in mapping])  # Web Mercator row remap
@@ -189,6 +192,7 @@ class CollectTests(CollectorTestCase):
         result = self.collect()
         self.assertIn("Invalid O-A0058-005 PNG", result.error)
         self.assertEqual(self.frames(), [])
+        self.assertEqual(self.files(), [])
         self.assertFalse(radar.frame_dir(self.data_dir).exists())
 
     def test_metadata_changing_during_download_is_rejected(self):
@@ -292,12 +296,10 @@ class HistoryAPITests(CollectorTestCase):
             {"timestamp": "2026-10-03T21:10:00+08:00", "image_url": "/api/radar/frames/radar_202610032110.png",
              "source": "O-A0058-005"},
         ])
-        image = self.client.get(body["frames"][0]["image_url"])
-        self.assertEqual(image.status_code, 200)
-        self.assertEqual(image.mimetype, "image/png")
-        self.assertTrue(image.data.startswith(radar_png.PNG_SIGNATURE))
-        image.close()
+        image = self.fetch_image(self.client, body["frames"][0]["image_url"])
+        self.assertTrue(image.startswith(radar_png.PNG_SIGNATURE))
 
+    @local_only
     def test_missing_file_is_not_listed(self):
         self.collect()
         (self.data_dir / "radar/radar_202610032100.png").unlink()

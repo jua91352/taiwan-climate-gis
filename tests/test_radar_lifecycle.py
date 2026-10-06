@@ -3,8 +3,9 @@ file/database consistency, concurrency, CWA failures).
 
 Unlike tests.test_radar, CWA is faked one level lower, at requests.get, so the
 real metadata parsing, Last-Modified pairing and PNG decoding run too. Every
-test uses its own temporary SQLite file and frame directory; production data
-is never touched.
+test uses its own temporary SQLite file and frame directory (or emptied local
+PostgreSQL tables and an in-memory fake Blob store, see tests.radar_support);
+production data is never touched.
 Run: python -m unittest tests.test_radar_lifecycle
 """
 import tempfile
@@ -20,6 +21,8 @@ import requests
 
 from tests.test_radar import encode_with_filters, sparse_rows  # also sets RADAR_COLLECTOR=0
 from backend import db, radar, radar_png
+from tests.db_support import fresh_db
+from tests.radar_support import RadarStorageMixin, local_only
 
 TAIPEI = timezone(timedelta(hours=8))
 T0 = datetime(2026, 10, 3, 20, 0, tzinfo=TAIPEI)
@@ -90,12 +93,13 @@ class FakeS3:
         raise AssertionError(f"unexpected URL {url}")
 
 
-class LifecycleTestCase(unittest.TestCase):
+class LifecycleTestCase(RadarStorageMixin, unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.data_dir = Path(self.tmp.name)
         self.db_path = self.data_dir / "weather.db"
-        db.init_db(self.db_path)
+        fresh_db(self.db_path)
+        self.start_storage()
         self.s3 = FakeS3(T0)
         patches = [mock.patch.object(radar.requests, "get", self.s3.get),
                    mock.patch.object(db, "DB_PATH", self.db_path),
@@ -126,18 +130,18 @@ class LifecycleTestCase(unittest.TestCase):
         return [f["timestamp"] for f in db.get_radar_frames(self.db_path)]
 
     def png_files(self) -> list[str]:
-        directory = radar.frame_dir(self.data_dir)
-        return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
+        return self.stored_names()
 
     def assert_consistent(self, expected: list[datetime]):
-        """SQLite rows, PNG files and the history API all hold exactly these frames."""
+        """Database rows, stored PNGs and the history API all hold exactly these frames."""
         stamps = [t.isoformat() for t in expected]
         self.assertEqual(self.db_stamps(), stamps)
         self.assertEqual(self.png_files(), sorted(radar.frame_file_name(s) for s in stamps))
-        body = self.history()
+        client = self.client()
+        body = self.history(client)
         self.assertEqual([f["timestamp"] for f in body["frames"]], stamps)
         for f in body["frames"]:
-            self.assertTrue(radar_png.decode_rgba((radar.frame_dir(self.data_dir) / Path(f["image_url"]).name).read_bytes()))
+            self.assertTrue(radar_png.decode_rgba(self.fetch_image(client, f["image_url"])))
 
 
 class RetentionTests(LifecycleTestCase):
@@ -169,6 +173,7 @@ class RetentionTests(LifecycleTestCase):
         self.assert_consistent(times)
         self.assertEqual(self.history()["count"], 3)
 
+    @local_only
     def test_locked_old_file_does_not_fail_collection(self):
         times = [T0 + timedelta(minutes=10 * k) for k in range(14)]
         for ts in times[:13]:
@@ -196,10 +201,7 @@ class DuplicateAndConsistencyTests(LifecycleTestCase):
         self.collect(T0)
         self.assert_consistent([T0])
         url = self.history()["frames"][0]["image_url"]
-        image = self.client().get(url)
-        self.assertEqual(image.status_code, 200)
-        self.assertEqual(image.mimetype, "image/png")
-        image.close()
+        self.assertTrue(self.fetch_image(self.client(), url).startswith(radar_png.PNG_SIGNATURE))
 
     def test_case_d_same_timestamp_twice_is_one_frame(self):
         self.assertTrue(self.collect(T0).added)
@@ -212,6 +214,7 @@ class DuplicateAndConsistencyTests(LifecycleTestCase):
         self.assertFalse(db.insert_radar_frame(T0.isoformat(), "radar/x.png", radar.SOURCE, self.db_path))
         self.assertEqual(len(self.db_stamps()), 1)
 
+    @local_only
     def test_case_b_record_without_png(self):
         self.collect(T0)
         self.collect(T0 + timedelta(minutes=10))
@@ -222,6 +225,7 @@ class DuplicateAndConsistencyTests(LifecycleTestCase):
         self.assertEqual(body["latest_timestamp"], T0.isoformat())
         self.assertEqual(self.client().get("/api/radar/frames/radar_202610032010.png").status_code, 404)
 
+    @local_only
     def test_case_b_missing_png_is_restored_when_cwa_still_serves_it(self):
         self.collect(T0)
         (radar.frame_dir(self.data_dir) / "radar_202610032000.png").unlink()
@@ -229,6 +233,7 @@ class DuplicateAndConsistencyTests(LifecycleTestCase):
         self.assertEqual(self.s3.png_downloads, 2)
         self.assert_consistent([T0])
 
+    @local_only
     def test_case_c_png_without_record_is_not_a_frame(self):
         self.collect(T0 + timedelta(minutes=10))
         orphan = radar.frame_dir(self.data_dir) / "radar_202610032000.png"
@@ -256,9 +261,7 @@ class DuplicateAndConsistencyTests(LifecycleTestCase):
         for f in body["frames"]:
             self.assertEqual(f["source"], "O-A0058-005")
             self.assertEqual(f["image_url"], f"/api/radar/frames/{radar.frame_file_name(f['timestamp'])}")
-            image = client.get(f["image_url"])
-            self.assertEqual(image.status_code, 200)
-            image.close()
+            self.assertTrue(self.fetch_image(client, f["image_url"]).startswith(radar_png.PNG_SIGNATURE))
 
 
 class RestartTests(LifecycleTestCase):
@@ -266,8 +269,8 @@ class RestartTests(LifecycleTestCase):
         times = [T0, T0 + timedelta(minutes=10)]
         for ts in times:
             self.collect(ts)
-        before = {p.name: p.stat().st_mtime_ns for p in radar.frame_dir(self.data_dir).iterdir()}
-        # New process: module state is fresh, SQLite and files are what is on disk.
+        before = self.storage_snapshot()
+        # New process: module state is fresh; the database and stored PNGs are what was stored.
         radar._last_attempt.clear()
         radar._last_error.clear()
         db.init_db(self.db_path)
@@ -275,7 +278,7 @@ class RestartTests(LifecycleTestCase):
         self.assertFalse(result.added)
         self.assertIsNone(result.error)
         self.assertEqual(self.s3.png_downloads, 2)  # nothing downloaded again
-        self.assertEqual({p.name: p.stat().st_mtime_ns for p in radar.frame_dir(self.data_dir).iterdir()}, before)
+        self.assertEqual(self.storage_snapshot(), before)  # no PNG written again
         self.assert_consistent(times)
 
 

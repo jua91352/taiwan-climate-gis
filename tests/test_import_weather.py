@@ -11,7 +11,7 @@ from pathlib import Path
 
 from backend import cwa_api, db
 from backend import import_weather_to_postgres as importer
-from tests.db_support import POSTGRES, fresh_weather_db
+from tests.db_support import POSTGRES, fresh_db
 
 T1, T2 = "2026-10-04T14:50:00+08:00", "2026-10-04T15:00:00+08:00"
 
@@ -34,7 +34,7 @@ class ImportTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        fresh_weather_db(Path(self.tmp.name) / "unused.db")
+        fresh_db(Path(self.tmp.name) / "unused.db")
         self.source = Path(self.tmp.name) / "source.db"
         conn = sqlite3.connect(self.source)
         conn.executescript(db.SQLITE_WEATHER_SCHEMA + db.RADAR_SCHEMA)
@@ -84,8 +84,8 @@ class ImportTests(unittest.TestCase):
         ])
         self.assertTrue(db.county_exists("澎湖縣"))
         self.assertEqual(self.digest(), before)
-        # RadarFrame is never created in PostgreSQL.
-        self.assertIsNone(db._query("SELECT to_regclass('radarframe') AS t")[0]["t"])
+        # The source's RadarFrame row is not imported.
+        self.assertEqual(db.get_radar_frames(), [])
 
     def test_running_again_adds_nothing(self):
         importer.run(self.source, execute=True)
